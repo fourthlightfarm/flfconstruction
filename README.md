@@ -7,10 +7,9 @@ It's a simple, static website — just HTML and CSS, no build step, no server �
 Fourth Light Farm nonprofit site. That makes it easy to edit, including with an AI coding agent, even if you don't
 know how to code.
 
-**This site is still a work in progress.** Most business details are filled in now (phone, email, service area,
-services, domain name, tagline), but the license number, a real logo, and hosting are still placeholders — see
-`AGENTS.md` for the full list. Fill those in (or ask an AI agent to help you fill them in) before treating the site
-as ready to publish.
+**Live at [flfconstruction.com](https://flfconstruction.com).** Business details (phone, email, service area,
+services, tagline) are filled in. What's still a placeholder: the real logo (`logo.svg` is plain text for now) and
+the six sample projects on `portfolio.html`, which need real photos and descriptions swapped in.
 
 ## Making changes with an AI agent (no coding experience needed)
 
@@ -20,13 +19,13 @@ You can update this site by describing what you want in plain English to [Claude
 1. **Open Claude Code in this project folder.** If you don't have it installed, see https://claude.com/claude-code
    for setup instructions. Once installed, open a terminal, navigate to this folder, and run `claude`.
 2. **Say what you want changed, in plain language.** For example:
-   - "Our phone number is 603-555-0199, add it to the Contact section and footer."
+   - "Add this project to the portfolio page: [details]."
    - "We do roofing and siding too, add those as service cards."
    - "Change the accent color from amber to a deep red."
 3. **Review what it changed.** Claude Code will show you a diff (a before/after) of the file(s) it edited. You don't
    need to understand code — just read the section it changed and check that it looks right.
-4. **Once you're ready to go live**, ask the agent to help set up a git repository, a GitHub remote, and GitHub Pages
-   — none of that exists yet for this site.
+4. **Ask it to commit and push** when you want the change to go live. Once pushed to the `main` branch on GitHub,
+   flfconstruction.com updates automatically within a few minutes.
 
 The file [`AGENTS.md`](./AGENTS.md) in this repo has more details for the agent about how this site is put together
 and the placeholders that still need real values. You don't need to read it yourself — the agent will use it
@@ -34,9 +33,13 @@ automatically.
 
 ## What's in this repo
 
-- `index.html` — the entire site (home, about, services, community impact, contact)
+- `index.html` — the main page (home, about, services, community impact, contact)
+- `portfolio.html` — a gallery of past projects (currently placeholder content)
+- `quote.html` — a "Request a Quote" form that opens the visitor's email app, pre-addressed to
+  fourthlightfarm@gmail.com, with their project details filled in
 - `theme.css` — colors, fonts, and styling (placeholder palette — not final brand colors)
 - `logo.svg` — a placeholder text-based logo (not a designed logo)
+- `CNAME` — the custom domain configuration (flfconstruction.com)
 
 ## Previewing locally
 
@@ -50,6 +53,6 @@ Then visit `http://localhost:8000`.
 
 ## Deployment
 
-Not deployed yet. This repo has no git history and no GitHub remote — it was scaffolded from the structure of the
-`flf` (Fourth Light Farm nonprofit) site as a starting point. Once the business details are filled in and you're
-ready to publish, set up a git repo, a GitHub remote, and GitHub Pages (or another static host) to go live.
+This site is hosted on GitHub Pages directly from the `main` branch of
+[github.com/fourthlightfarm/flfconstruction](https://github.com/fourthlightfarm/flfconstruction). Any change pushed
+to `main` goes live automatically — there is no build or CI step in between.
