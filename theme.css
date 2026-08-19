@@ -1,59 +1,59 @@
 /* Fourth Light Farm Construction, LLC - Custom Bulma Theme */
 
 :root {
-  /* Brand Colors (placeholder palette — swap for real FLFC brand colors when available) */
-  --flfc-steel-blue: #5c7186;
-  --flfc-charcoal: #2b2f33;
-  --flfc-light-steel: #dfe3e6;
-  --flfc-concrete: #f3f2ee;
-  --flfc-ink: #232120;
-  --flfc-amber: #c9781f;
-  --flfc-pale-steel: #cdd6dc;
+  /* Brand Colors — matches the Fourth Light Farm (flf) nonprofit site's palette */
+  --flfc-medium-green: #8a9b7a;
+  --flfc-earth-brown: #3e2c1f;
+  --flfc-light-tan: #e8e3d5;
+  --flfc-cream: #f5f2ea;
+  --flfc-dark-soil: #2b2423;
+  --flfc-sage-green: #b8c5a8;
+  --flfc-light-green: #d4dbc9;
 
   /* Bulma Variable Overrides */
-  --bulma-primary-h: 205;
-  --bulma-primary-s: 20%;
-  --bulma-primary-l: 42%;
-  --bulma-link: var(--flfc-steel-blue);
-  --bulma-link-hover: var(--flfc-charcoal);
+  --bulma-primary-h: 95;
+  --bulma-primary-s: 25%;
+  --bulma-primary-l: 72%;
+  --bulma-link: var(--flfc-medium-green);
+  --bulma-link-hover: var(--flfc-earth-brown);
   --bulma-family-primary: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Body and Background */
 body {
-  background-color: var(--flfc-concrete);
-  color: var(--flfc-ink);
+  background-color: var(--flfc-cream);
+  color: var(--flfc-dark-soil);
   font-family: var(--bulma-family-primary);
 }
 
 /* Custom Primary Color */
 .has-background-primary-custom {
-  background-color: var(--flfc-steel-blue) !important;
+  background-color: var(--flfc-medium-green) !important;
 }
 
 .has-background-earth {
-  background-color: var(--flfc-charcoal) !important;
+  background-color: var(--flfc-earth-brown) !important;
 }
 
 .has-background-tan {
-  background-color: var(--flfc-light-steel) !important;
+  background-color: var(--flfc-light-tan) !important;
 }
 
 .has-background-cream {
-  background-color: var(--flfc-concrete) !important;
+  background-color: var(--flfc-cream) !important;
 }
 
 .has-text-earth {
-  color: var(--flfc-charcoal) !important;
+  color: var(--flfc-earth-brown) !important;
 }
 
 .has-text-sage {
-  color: var(--flfc-steel-blue) !important;
+  color: var(--flfc-medium-green) !important;
 }
 
 /* Navbar Styling */
 .navbar {
-  background-color: var(--flfc-charcoal) !important;
+  background-color: var(--flfc-earth-brown) !important;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
@@ -66,8 +66,8 @@ body {
 
 .navbar-item:hover,
 .navbar-link:hover {
-  background-color: rgba(92, 113, 134, 0.25) !important;
-  color: var(--flfc-pale-steel) !important;
+  background-color: rgba(138, 155, 122, 0.25) !important;
+  color: var(--flfc-light-green) !important;
 }
 
 .navbar-burger {
@@ -77,13 +77,13 @@ body {
 /* Mobile menu dropdown background */
 @media screen and (max-width: 1023px) {
   .navbar-menu {
-    background-color: var(--flfc-charcoal) !important;
+    background-color: var(--flfc-earth-brown) !important;
   }
 }
 
 /* Hero Section */
 .hero {
-  background: linear-gradient(135deg, var(--flfc-light-steel) 0%, var(--flfc-concrete) 100%);
+  background: linear-gradient(135deg, var(--flfc-light-tan) 0%, var(--flfc-cream) 100%);
   position: relative;
 }
 
@@ -109,7 +109,7 @@ section {
 .section-title {
   font-size: 2.5rem;
   font-weight: 700;
-  color: var(--flfc-charcoal);
+  color: var(--flfc-earth-brown);
   margin-bottom: 1.5rem;
   text-align: center;
   text-transform: uppercase;
@@ -118,7 +118,7 @@ section {
 
 .section-subtitle {
   font-size: 1.25rem;
-  color: var(--flfc-steel-blue);
+  color: var(--flfc-medium-green);
   text-align: center;
   margin-bottom: 3rem;
   font-style: italic;
@@ -147,8 +147,8 @@ section {
 }
 
 .card-header {
-  background-color: var(--flfc-light-steel);
-  color: var(--flfc-charcoal);
+  background-color: var(--flfc-light-tan);
+  color: var(--flfc-earth-brown);
   font-weight: 700;
   padding: 1rem 1.25rem;
   border-radius: 8px 8px 0 0;
@@ -160,22 +160,22 @@ section {
 
 /* Fun Facts / Highlight Boxes */
 .fact-box {
-  background-color: var(--flfc-pale-steel);
+  background-color: var(--flfc-light-green);
   padding: 1.5rem;
   border-radius: 8px;
-  border-left: 4px solid var(--flfc-steel-blue);
+  border-left: 4px solid var(--flfc-medium-green);
   margin-bottom: 1.5rem;
 }
 
 .fact-box p {
   margin: 0;
-  color: var(--flfc-ink);
+  color: var(--flfc-dark-soil);
   line-height: 1.6;
 }
 
 /* Buttons */
 .button.is-primary-custom {
-  background-color: var(--flfc-steel-blue);
+  background-color: var(--flfc-medium-green);
   color: white;
   border: none;
   font-weight: 600;
@@ -186,25 +186,25 @@ section {
 }
 
 .button.is-primary-custom:hover {
-  background-color: var(--flfc-charcoal);
+  background-color: var(--flfc-earth-brown);
   transform: translateY(-2px);
 }
 
 .button.is-earth {
-  background-color: var(--flfc-charcoal);
+  background-color: var(--flfc-earth-brown);
   color: white;
   border: none;
   font-weight: 600;
 }
 
 .button.is-earth:hover {
-  background-color: var(--flfc-ink);
+  background-color: var(--flfc-dark-soil);
 }
 
 .button.is-earth-outlined {
   background-color: transparent;
-  color: var(--flfc-charcoal);
-  border: 2px solid var(--flfc-charcoal);
+  color: var(--flfc-earth-brown);
+  border: 2px solid var(--flfc-earth-brown);
   font-weight: 600;
   padding: 1.25rem 2.5rem;
   font-size: 1.1rem;
@@ -213,7 +213,7 @@ section {
 }
 
 .button.is-earth-outlined:hover {
-  background-color: var(--flfc-charcoal);
+  background-color: var(--flfc-earth-brown);
   color: white;
   transform: translateY(-2px);
 }
@@ -226,16 +226,17 @@ section {
   transform: scale(1.1);
 }
 
-/* Accent button (amber) */
-.button.is-amber {
-  background-color: var(--flfc-amber);
-  color: white;
+/* Accent button (sage) */
+.button.is-sage {
+  background-color: var(--flfc-sage-green);
+  color: var(--flfc-earth-brown);
   border: none;
   font-weight: 600;
 }
 
-.button.is-amber:hover {
-  background-color: #a8631a;
+.button.is-sage:hover {
+  background-color: var(--flfc-medium-green);
+  color: white;
 }
 
 /* Contact Section */
@@ -251,36 +252,36 @@ section {
 }
 
 .contact-item strong {
-  color: var(--flfc-charcoal);
+  color: var(--flfc-earth-brown);
   display: block;
   margin-bottom: 0.5rem;
   font-size: 1.1rem;
 }
 
 .contact-item a {
-  color: var(--flfc-steel-blue);
+  color: var(--flfc-medium-green);
   text-decoration: none;
   transition: color 0.3s ease;
 }
 
 .contact-item a:hover {
-  color: var(--flfc-charcoal);
+  color: var(--flfc-earth-brown);
   text-decoration: underline;
 }
 
 /* Footer */
 .footer {
-  background-color: var(--flfc-charcoal);
-  color: var(--flfc-concrete);
+  background-color: var(--flfc-earth-brown);
+  color: var(--flfc-cream);
   padding: 3rem 1.5rem;
 }
 
 .footer a {
-  color: var(--flfc-pale-steel);
+  color: var(--flfc-light-green);
 }
 
 .footer a:hover {
-  color: var(--flfc-light-steel);
+  color: var(--flfc-light-tan);
 }
 
 /* Smooth Scrolling */
@@ -290,13 +291,13 @@ html {
 
 /* Typography */
 h1, h2, h3, h4, h5, h6 {
-  color: var(--flfc-charcoal);
+  color: var(--flfc-earth-brown);
   font-weight: 700;
 }
 
 p {
   line-height: 1.7;
-  color: var(--flfc-ink);
+  color: var(--flfc-dark-soil);
 }
 
 /* Responsive adjustments */
@@ -331,8 +332,8 @@ p {
 
 .est-badge {
   display: inline-block;
-  background-color: var(--flfc-charcoal);
-  color: var(--flfc-concrete);
+  background-color: var(--flfc-earth-brown);
+  color: var(--flfc-cream);
   padding: 0.5rem 1.5rem;
   border-radius: 20px;
   font-weight: 600;

@@ -64,10 +64,11 @@ the affiliated nonprofit.
 
 ## Styling conventions
 
-- All brand colors are CSS custom properties defined in `theme.css` under `:root` (e.g. `--flfc-steel-blue`,
-  `--flfc-charcoal`, `--flfc-amber`). This is a placeholder palette (steel blue/charcoal/amber) chosen to be distinct
-  from the FLF nonprofit's sage-green farm palette — swap it out entirely once FLFC has real brand colors, rather
-  than treating it as final.
+- All brand colors are CSS custom properties defined in `theme.css` under `:root` (e.g. `--flfc-medium-green`,
+  `--flfc-earth-brown`, `--flfc-sage-green`). As of 2026-08-19 this deliberately matches the `flf` nonprofit site's
+  palette exactly (same hex values, same sage-green/earth-brown/cream family) per the user's request to visually tie
+  the two sites together — this is no longer a placeholder to be swapped out; treat it as the real brand palette
+  unless the user says otherwise.
 - Prefer Bulma utility classes already in use (`has-text-centered`, `is-fullwidth`, `section`, etc.) over new custom
   CSS when possible.
 - The site must stay responsive — there's a mobile breakpoint block at the bottom of `theme.css` (`@media screen and
