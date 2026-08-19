@@ -1,0 +1,332 @@
+/* Fourth Light Farm Construction, LLC - Custom Bulma Theme */
+
+:root {
+  /* Brand Colors (placeholder palette — swap for real FLFC brand colors when available) */
+  --flfc-steel-blue: #5c7186;
+  --flfc-charcoal: #2b2f33;
+  --flfc-light-steel: #dfe3e6;
+  --flfc-concrete: #f3f2ee;
+  --flfc-ink: #232120;
+  --flfc-amber: #c9781f;
+  --flfc-pale-steel: #cdd6dc;
+
+  /* Bulma Variable Overrides */
+  --bulma-primary-h: 205;
+  --bulma-primary-s: 20%;
+  --bulma-primary-l: 42%;
+  --bulma-link: var(--flfc-steel-blue);
+  --bulma-link-hover: var(--flfc-charcoal);
+  --bulma-family-primary: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Body and Background */
+body {
+  background-color: var(--flfc-concrete);
+  color: var(--flfc-ink);
+  font-family: var(--bulma-family-primary);
+}
+
+/* Custom Primary Color */
+.has-background-primary-custom {
+  background-color: var(--flfc-steel-blue) !important;
+}
+
+.has-background-earth {
+  background-color: var(--flfc-charcoal) !important;
+}
+
+.has-background-tan {
+  background-color: var(--flfc-light-steel) !important;
+}
+
+.has-background-cream {
+  background-color: var(--flfc-concrete) !important;
+}
+
+.has-text-earth {
+  color: var(--flfc-charcoal) !important;
+}
+
+.has-text-sage {
+  color: var(--flfc-steel-blue) !important;
+}
+
+/* Navbar Styling */
+.navbar {
+  background-color: var(--flfc-charcoal) !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.navbar-item,
+.navbar-link {
+  color: #ffffff !important;
+  font-weight: 500;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.navbar-item:hover,
+.navbar-link:hover {
+  background-color: rgba(92, 113, 134, 0.25) !important;
+  color: var(--flfc-pale-steel) !important;
+}
+
+.navbar-burger {
+  color: #ffffff !important;
+}
+
+/* Mobile menu dropdown background */
+@media screen and (max-width: 1023px) {
+  .navbar-menu {
+    background-color: var(--flfc-charcoal) !important;
+  }
+}
+
+/* Hero Section */
+.hero {
+  background: linear-gradient(135deg, var(--flfc-light-steel) 0%, var(--flfc-concrete) 100%);
+  position: relative;
+}
+
+.hero.is-fullheight {
+  min-height: 100vh;
+}
+
+.hero-body {
+  padding: 3rem 1.5rem;
+}
+
+/* Logo Placeholder */
+.logo-placeholder {
+  margin: 0 auto 2rem;
+  display: block;
+}
+
+/* Section Styling */
+section {
+  padding: 4rem 1.5rem;
+}
+
+.section-title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--flfc-charcoal);
+  margin-bottom: 1.5rem;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.section-subtitle {
+  font-size: 1.25rem;
+  color: var(--flfc-steel-blue);
+  text-align: center;
+  margin-bottom: 3rem;
+  font-style: italic;
+}
+
+/* Card Styling */
+.card {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.card-header {
+  background-color: var(--flfc-light-steel);
+  color: var(--flfc-charcoal);
+  font-weight: 700;
+  padding: 1rem 1.25rem;
+  border-radius: 8px 8px 0 0;
+}
+
+.card-content {
+  padding: 1.5rem;
+}
+
+/* Fun Facts / Highlight Boxes */
+.fact-box {
+  background-color: var(--flfc-pale-steel);
+  padding: 1.5rem;
+  border-radius: 8px;
+  border-left: 4px solid var(--flfc-steel-blue);
+  margin-bottom: 1.5rem;
+}
+
+.fact-box p {
+  margin: 0;
+  color: var(--flfc-ink);
+  line-height: 1.6;
+}
+
+/* Buttons */
+.button.is-primary-custom {
+  background-color: var(--flfc-steel-blue);
+  color: white;
+  border: none;
+  font-weight: 600;
+  padding: 1.25rem 2.5rem;
+  font-size: 1.1rem;
+  border-radius: 4px;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+.button.is-primary-custom:hover {
+  background-color: var(--flfc-charcoal);
+  transform: translateY(-2px);
+}
+
+.button.is-earth {
+  background-color: var(--flfc-charcoal);
+  color: white;
+  border: none;
+  font-weight: 600;
+}
+
+.button.is-earth:hover {
+  background-color: var(--flfc-ink);
+}
+
+.button.is-earth-outlined {
+  background-color: transparent;
+  color: var(--flfc-charcoal);
+  border: 2px solid var(--flfc-charcoal);
+  font-weight: 600;
+  padding: 1.25rem 2.5rem;
+  font-size: 1.1rem;
+  border-radius: 4px;
+  transition: background-color 0.3s ease, transform 0.2s ease, color 0.3s ease;
+}
+
+.button.is-earth-outlined:hover {
+  background-color: var(--flfc-charcoal);
+  color: white;
+  transform: translateY(-2px);
+}
+
+.button.is-earth-outlined .icon {
+  transition: transform 0.3s ease;
+}
+
+.button.is-earth-outlined:hover .icon {
+  transform: scale(1.1);
+}
+
+/* Accent button (amber) */
+.button.is-amber {
+  background-color: var(--flfc-amber);
+  color: white;
+  border: none;
+  font-weight: 600;
+}
+
+.button.is-amber:hover {
+  background-color: #a8631a;
+}
+
+/* Contact Section */
+.contact-info {
+  background-color: white;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.contact-item {
+  margin-bottom: 1.5rem;
+}
+
+.contact-item strong {
+  color: var(--flfc-charcoal);
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 1.1rem;
+}
+
+.contact-item a {
+  color: var(--flfc-steel-blue);
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+.contact-item a:hover {
+  color: var(--flfc-charcoal);
+  text-decoration: underline;
+}
+
+/* Footer */
+.footer {
+  background-color: var(--flfc-charcoal);
+  color: var(--flfc-concrete);
+  padding: 3rem 1.5rem;
+}
+
+.footer a {
+  color: var(--flfc-pale-steel);
+}
+
+.footer a:hover {
+  color: var(--flfc-light-steel);
+}
+
+/* Smooth Scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Typography */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--flfc-charcoal);
+  font-weight: 700;
+}
+
+p {
+  line-height: 1.7;
+  color: var(--flfc-ink);
+}
+
+/* Responsive adjustments */
+@media screen and (max-width: 768px) {
+  .section-title {
+    font-size: 2rem;
+  }
+
+  .hero-body {
+    padding: 2rem 1rem;
+  }
+
+  section {
+    padding: 3rem 1rem;
+  }
+
+  .fact-box .subtitle {
+    font-size: 1rem !important;
+  }
+}
+
+/* Utilities */
+.has-text-centered-mobile {
+  text-align: center;
+}
+
+@media screen and (min-width: 769px) {
+  .has-text-centered-mobile {
+    text-align: inherit;
+  }
+}
+
+.est-badge {
+  display: inline-block;
+  background-color: var(--flfc-charcoal);
+  color: var(--flfc-concrete);
+  padding: 0.5rem 1.5rem;
+  border-radius: 20px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  margin-top: 1rem;
+}
