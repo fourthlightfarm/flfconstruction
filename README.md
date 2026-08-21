@@ -8,8 +8,8 @@ Fourth Light Farm nonprofit site. That makes it easy to edit, including with an 
 know how to code.
 
 **Live at [flfconstruction.com](https://flfconstruction.com).** Business details (phone, email, service area,
-services, tagline) are filled in. What's still a placeholder: the real logo (`logo.svg` is plain text for now) and
-the six sample projects on `portfolio.html`, which need real photos and descriptions swapped in.
+services, tagline) are filled in, the logo is real, and `portfolio.html` has 4 real project photos (all tile work
+so far) plus a "more coming soon" card for the other services.
 
 ## Making changes with an AI agent (no coding experience needed)
 
@@ -34,11 +34,12 @@ automatically.
 ## What's in this repo
 
 - `index.html` — the main page (home, about, services, community impact, contact)
-- `portfolio.html` — a gallery of past projects (currently placeholder content)
+- `portfolio.html` — a gallery of past projects (4 real photos + a "more coming soon" card)
 - `quote.html` — a "Request a Quote" form that opens the visitor's email app, pre-addressed to
   fourthlightfarm@gmail.com, with their project details filled in
-- `theme.css` — colors, fonts, and styling (placeholder palette — not final brand colors)
-- `logo.svg` — a placeholder text-based logo (not a designed logo)
+- `theme.css` — colors, fonts, and styling (matches the Fourth Light Farm nonprofit site's palette)
+- `logo.png` — the FLFC logo (cow + saw silhouette with "FLFC LLC" text)
+- `images/` — portfolio project photos
 - `CNAME` — the custom domain configuration (flfconstruction.com)
 
 ## Previewing locally

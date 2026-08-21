@@ -19,7 +19,9 @@ Static HTML pages. No framework, no build step, no package manager, no dependenc
   opens the visitor's own email app for them to hit send. There is no server-side form backend; nothing is silently
   submitted in the background. See Deployment below for why, and what an upgrade would require.
 - `theme.css` — all custom styling, layered on top of the Bulma CSS framework (loaded from a CDN, not vendored).
-- `logo.svg` — a placeholder text-based logo. Replace with real FLFC branding when it exists.
+- `logo.png` — the real FLFC logo (cow head + hand saw silhouette, recolored to `--flfc-earth-brown` with "FLFC LLC"
+  text below it), generated 2026-08-21 from a source image the user supplied. Not a placeholder — don't regenerate or
+  restyle it without the user asking.
 - `CNAME` — contains `flfconstruction.com`. GitHub Pages custom domain file; only touch this if the user explicitly
   asks to change the site's domain.
 
@@ -52,10 +54,12 @@ classes) rather than introducing new layout systems.
 
 ## Known placeholders — flag these, don't silently invent real-looking values
 
-- All six portfolio cards in `portfolio.html` (`[Project Name]` + placeholder description) are examples of the
-  layout, not real completed jobs. Don't invent project names, locations, or details to fill them in — ask the user
-  for real past projects (and real photos, to replace the "Project photo coming soon" boxes) instead.
-- `logo.svg` is a plain text placeholder, not a designed logo — replace when real branding exists.
+- `portfolio.html` now has 4 real project photos (added 2026-08-21, all tagged "Custom Tile" — a tub surround, a
+  pebble-floor walk-in shower, a frameless glass shower, and a marble-look bath remodel; files live in `images/`)
+  plus one "More Projects Coming Soon" card. Don't invent project names/locations for the real photos beyond what's
+  visibly true from the image, and don't invent fake completed projects for General Contracting, Rot Repair, or
+  Architectural Drafting — those categories have no real photos yet, so leave the "coming soon" card as-is until the
+  user supplies more.
 - There is no license number displayed anywhere on the site — the user confirmed one isn't needed/applicable, so
   don't add one back in.
 
