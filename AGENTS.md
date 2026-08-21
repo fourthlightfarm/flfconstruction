@@ -12,8 +12,12 @@ Static HTML pages. No framework, no build step, no package manager, no dependenc
 
 - `index.html` — the main page: hero, about, services, community impact, and contact sections, plus a small inline
   `<script>` at the bottom for the mobile nav toggle and smooth scrolling.
-- `portfolio.html` — a gallery page of past projects. **All six project cards are placeholders** (`[Project Name]`,
-  "Project photo coming soon", generic placeholder description) — see the Known placeholders section below.
+- `portfolio.html` — a gallery page of past projects. 4 real photo cards + 1 "more coming soon" card (see Known
+  placeholders below). Each real photo sits in a `<button class="portfolio-thumb">` — clicking it opens a lightbox
+  overlay (`#lightbox` markup near the end of the body, styles in `theme.css` under "Lightbox / Slideshow", JS at the
+  bottom of the file) that lets visitors step through all `.portfolio-thumb` photos with prev/next buttons, arrow
+  keys, or Escape/backdrop-click to close. The lightbox JS reads the thumbnail list dynamically, so adding another
+  `.portfolio-thumb` button automatically includes it in the slideshow — no JS changes needed for new photos.
 - `quote.html` — a quote-request form page. On submit it builds a `mailto:` link addressed to
   `fourthlightfarm@gmail.com` (pre-filled subject/body from the form fields) and navigates the browser there — it
   opens the visitor's own email app for them to hit send. There is no server-side form backend; nothing is silently

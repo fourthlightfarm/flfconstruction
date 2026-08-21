@@ -65,8 +65,9 @@
         <!-- Project 1 -->
         <div class="column is-4">
           <div class="card">
-            <img src="images/portfolio-tub-surround.jpg" alt="White subway tile tub surround with tiled niche"
-              style="width: 100%; height: 220px; object-fit: cover; border-radius: 8px 8px 0 0;">
+            <button type="button" class="portfolio-thumb" data-caption="Subway Tile Tub Surround">
+              <img src="images/portfolio-tub-surround.jpg" alt="White subway tile tub surround with tiled niche">
+            </button>
             <div class="card-content">
               <span class="tag" style="background-color: var(--flfc-medium-green); color: white; margin-bottom: 0.5rem;">Custom Tile</span>
               <h3 class="title is-5 has-text-earth">Subway Tile Tub Surround</h3>
@@ -78,8 +79,9 @@
         <!-- Project 2 -->
         <div class="column is-4">
           <div class="card">
-            <img src="images/portfolio-pebble-shower.jpg" alt="Walk-in shower with built-in bench and pebble floor"
-              style="width: 100%; height: 220px; object-fit: cover; border-radius: 8px 8px 0 0;">
+            <button type="button" class="portfolio-thumb" data-caption="Walk-In Shower with Bench">
+              <img src="images/portfolio-pebble-shower.jpg" alt="Walk-in shower with built-in bench and pebble floor">
+            </button>
             <div class="card-content">
               <span class="tag" style="background-color: var(--flfc-medium-green); color: white; margin-bottom: 0.5rem;">Custom Tile</span>
               <h3 class="title is-5 has-text-earth">Walk-In Shower with Bench</h3>
@@ -91,8 +93,9 @@
         <!-- Project 3 -->
         <div class="column is-4">
           <div class="card">
-            <img src="images/portfolio-mosaic-shower.jpg" alt="Frameless glass shower with subway tile and pebble floor"
-              style="width: 100%; height: 220px; object-fit: cover; border-radius: 8px 8px 0 0;">
+            <button type="button" class="portfolio-thumb" data-caption="Frameless Glass Shower">
+              <img src="images/portfolio-mosaic-shower.jpg" alt="Frameless glass shower with subway tile and pebble floor">
+            </button>
             <div class="card-content">
               <span class="tag" style="background-color: var(--flfc-medium-green); color: white; margin-bottom: 0.5rem;">Custom Tile</span>
               <h3 class="title is-5 has-text-earth">Frameless Glass Shower</h3>
@@ -104,8 +107,9 @@
         <!-- Project 4 -->
         <div class="column is-4">
           <div class="card">
-            <img src="images/portfolio-hex-niche-shower.jpg" alt="Marble-look shower with hexagon mosaic floor"
-              style="width: 100%; height: 220px; object-fit: cover; border-radius: 8px 8px 0 0;">
+            <button type="button" class="portfolio-thumb" data-caption="Marble-Look Bath Remodel">
+              <img src="images/portfolio-hex-niche-shower.jpg" alt="Marble-look shower with hexagon mosaic floor">
+            </button>
             <div class="card-content">
               <span class="tag" style="background-color: var(--flfc-medium-green); color: white; margin-bottom: 0.5rem;">Custom Tile</span>
               <h3 class="title is-5 has-text-earth">Marble-Look Bath Remodel</h3>
@@ -142,6 +146,17 @@
       </div>
     </div>
   </section>
+
+  <!-- Lightbox / Slideshow -->
+  <div id="lightbox" class="lightbox is-hidden">
+    <button type="button" class="lightbox-close" aria-label="Close">&times;</button>
+    <button type="button" class="lightbox-prev" aria-label="Previous photo">&#10094;</button>
+    <figure class="lightbox-figure">
+      <img id="lightbox-img" src="" alt="">
+      <figcaption id="lightbox-caption"></figcaption>
+    </figure>
+    <button type="button" class="lightbox-next" aria-label="Next photo">&#10095;</button>
+  </div>
 
   <!-- Footer -->
   <footer class="footer">
@@ -195,6 +210,53 @@
           el.classList.toggle('is-active');
           $target.classList.toggle('is-active');
         });
+      });
+
+      // Portfolio lightbox / slideshow
+      const thumbs = Array.from(document.querySelectorAll('.portfolio-thumb'));
+      const lightbox = document.getElementById('lightbox');
+      const lightboxImg = document.getElementById('lightbox-img');
+      const lightboxCaption = document.getElementById('lightbox-caption');
+      let currentIndex = 0;
+
+      function showPhoto(index) {
+        currentIndex = (index + thumbs.length) % thumbs.length;
+        const img = thumbs[currentIndex].querySelector('img');
+        lightboxImg.src = img.src;
+        lightboxImg.alt = img.alt;
+        lightboxCaption.textContent = `${thumbs[currentIndex].dataset.caption} (${currentIndex + 1} of ${thumbs.length})`;
+      }
+
+      function openLightbox(index) {
+        showPhoto(index);
+        lightbox.classList.remove('is-hidden');
+        document.body.style.overflow = 'hidden';
+      }
+
+      function closeLightbox() {
+        lightbox.classList.add('is-hidden');
+        document.body.style.overflow = '';
+      }
+
+      thumbs.forEach((thumb, i) => {
+        thumb.addEventListener('click', () => openLightbox(i));
+      });
+
+      document.querySelector('.lightbox-close').addEventListener('click', closeLightbox);
+      document.querySelector('.lightbox-prev').addEventListener('click', () => showPhoto(currentIndex - 1));
+      document.querySelector('.lightbox-next').addEventListener('click', () => showPhoto(currentIndex + 1));
+
+      lightbox.addEventListener('click', (e) => {
+        if (e.target === lightbox) {
+          closeLightbox();
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (lightbox.classList.contains('is-hidden')) return;
+        if (e.key === 'Escape') closeLightbox();
+        if (e.key === 'ArrowLeft') showPhoto(currentIndex - 1);
+        if (e.key === 'ArrowRight') showPhoto(currentIndex + 1);
       });
     });
   </script>

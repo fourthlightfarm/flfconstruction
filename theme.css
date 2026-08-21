@@ -340,3 +340,113 @@ p {
   letter-spacing: 1px;
   margin-top: 1rem;
 }
+
+/* Portfolio thumbnails (full image visible, no cropping) */
+.portfolio-thumb {
+  display: block;
+  width: 100%;
+  height: 220px;
+  padding: 0;
+  border: none;
+  background-color: var(--flfc-light-tan);
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.portfolio-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* Lightbox / Slideshow */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(43, 36, 35, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.lightbox.is-hidden {
+  display: none;
+}
+
+.lightbox-figure {
+  max-width: 88vw;
+  max-height: 85vh;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.lightbox-figure img {
+  max-width: 88vw;
+  max-height: 75vh;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.lightbox-figure figcaption {
+  color: var(--flfc-cream);
+  text-align: center;
+  margin-top: 1rem;
+  font-size: 1rem;
+}
+
+.lightbox-close,
+.lightbox-prev,
+.lightbox-next {
+  position: fixed;
+  background: transparent;
+  border: none;
+  color: var(--flfc-cream);
+  font-size: 2.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.5rem;
+}
+
+.lightbox-close:hover,
+.lightbox-prev:hover,
+.lightbox-next:hover {
+  color: var(--flfc-light-tan);
+}
+
+.lightbox-close {
+  top: 1.5rem;
+  right: 1.5rem;
+  font-size: 2rem;
+}
+
+.lightbox-prev {
+  left: 1.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.lightbox-next {
+  right: 1.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+@media screen and (max-width: 768px) {
+  .lightbox-prev {
+    left: 0.5rem;
+  }
+
+  .lightbox-next {
+    right: 0.5rem;
+  }
+
+  .lightbox-close {
+    top: 0.75rem;
+    right: 0.75rem;
+  }
+}
