@@ -45,7 +45,13 @@ All three pages share the same nav bar and footer. When adding a nav item, page,
   `height: 100%` + flex column layout (see `theme.css` `.card` rules) so they stay equal height regardless of how
   much text is in each one — don't remove that when editing card content.
 - `#impact` — "Building With a Purpose" box explaining the 10%-of-project-cost donation to Fourth Light Farm
-- `#contact` — contact info and footer
+- `#contact` — contact info
+- `#game` — "Cow Catapult," a silly slingshot mini-game (drag the cow, launch it at the house) added 2026-08-30 at
+  the user's request. Self-contained Canvas 2D game, no library, logic lives in the same inline `<script>` block at
+  the bottom of `index.html` after the smooth-scroll code, styles under "Cow Catapult mini-game" in `theme.css`.
+  Colors are pulled from the `--flfc-*` CSS variables at runtime so it stays in sync with the site palette. This is
+  a fun easter egg, not a business-critical feature — treat requests to tweak it (power, house size, cow look) as
+  low-risk/quick iterations, not something requiring the same caution as the quote form or contact info.
 
 `portfolio.html` — page header, then a grid of project cards (see placeholders below), then a "Start Your Project"
 CTA linking to `quote.html`.

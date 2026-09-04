@@ -450,3 +450,33 @@ p {
     right: 0.75rem;
   }
 }
+
+/* Cow Catapult mini-game */
+.game-wrap {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+#cowGame {
+  width: 100%;
+  max-width: 800px;
+  height: auto;
+  aspect-ratio: 800 / 400;
+  background-color: #cfe3f5;
+  border: 3px solid var(--flfc-earth-brown);
+  border-radius: 8px;
+  cursor: grab;
+  touch-action: none;
+}
+
+#cowGame:active {
+  cursor: grabbing;
+}
+
+.game-message {
+  margin-top: 1rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--flfc-earth-brown);
+  min-height: 1.6em;
+}

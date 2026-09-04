@@ -279,6 +279,22 @@
     </div>
   </section>
 
+  <!-- Cow Catapult Mini-Game -->
+  <section id="game" class="section has-background-tan">
+    <div class="container has-text-centered">
+      <h2 class="section-title">Cow Catapult</h2>
+      <p class="section-subtitle">Because sometimes you just need to launch a cow at a house.</p>
+      <div class="game-wrap">
+        <canvas id="cowGame" width="800" height="400"></canvas>
+        <p id="game-message" class="game-message">Drag the cow back, then let go to launch.</p>
+        <button type="button" id="game-reset" class="button is-earth-outlined is-medium mt-3">
+          <span class="icon"><i class="fas fa-rotate-right"></i></span>
+          <span>Reset</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
   <!-- Footer -->
   <footer class="footer">
     <div class="container">
@@ -361,6 +377,285 @@
           }
         });
       });
+
+      // Cow Catapult mini-game
+      const canvas = document.getElementById('cowGame');
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width;
+        const H = canvas.height;
+        const groundY = 350;
+        const anchor = { x: 120, y: 290 };
+        const maxPull = 55;
+        const gravity = 0.55;
+        const powerMultiplier = 0.24;
+        const house = { x: 620, y: groundY - 90, w: 130, h: 90, roofH: 55 };
+        const messageEl = document.getElementById('game-message');
+
+        const rootStyles = getComputedStyle(document.documentElement);
+        const colorGrass = (rootStyles.getPropertyValue('--flfc-medium-green') || '#8a9b7a').trim() || '#8a9b7a';
+        const colorBrown = (rootStyles.getPropertyValue('--flfc-earth-brown') || '#3e2c1f').trim() || '#3e2c1f';
+        const colorTan = (rootStyles.getPropertyValue('--flfc-light-tan') || '#e8e3d5').trim() || '#e8e3d5';
+        const colorCream = (rootStyles.getPropertyValue('--flfc-cream') || '#f5f2ea').trim() || '#f5f2ea';
+        const colorSky = '#cfe3f5';
+
+        let cow = { x: anchor.x, y: anchor.y, r: 20, vx: 0, vy: 0, rotation: 0 };
+        let state = 'aiming'; // aiming | dragging | flying | hit | miss
+        let houseShake = 0;
+
+        function resetGame() {
+          cow = { x: anchor.x, y: anchor.y, r: 20, vx: 0, vy: 0, rotation: 0 };
+          state = 'aiming';
+          houseShake = 0;
+          messageEl.textContent = 'Drag the cow back, then let go to launch.';
+        }
+
+        function getCanvasPos(e) {
+          const rect = canvas.getBoundingClientRect();
+          const scaleX = W / rect.width;
+          const scaleY = H / rect.height;
+          const point = e.touches && e.touches.length ? e.touches[0] : e;
+          return {
+            x: (point.clientX - rect.left) * scaleX,
+            y: (point.clientY - rect.top) * scaleY
+          };
+        }
+
+        function isNearCow(pos) {
+          const dx = pos.x - cow.x;
+          const dy = pos.y - cow.y;
+          return Math.sqrt((dx * dx) + (dy * dy)) < 45;
+        }
+
+        function houseHitBox() {
+          return {
+            x: house.x - 5,
+            y: house.y - house.roofH,
+            w: house.w + 10,
+            h: house.h + house.roofH
+          };
+        }
+
+        function circleRectCollide(cx, cy, r, rect) {
+          const closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+          const closestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+          const dx = cx - closestX;
+          const dy = cy - closestY;
+          return ((dx * dx) + (dy * dy)) < (r * r);
+        }
+
+        function startDrag(e) {
+          if (state !== 'aiming') return;
+          const pos = getCanvasPos(e);
+          if (!isNearCow(pos)) return;
+          state = 'dragging';
+          e.preventDefault();
+        }
+
+        function moveDrag(e) {
+          if (state !== 'dragging') return;
+          const pos = getCanvasPos(e);
+          let dx = pos.x - anchor.x;
+          let dy = pos.y - anchor.y;
+          const dist = Math.sqrt((dx * dx) + (dy * dy));
+          if (dist > maxPull) {
+            dx = (dx / dist) * maxPull;
+            dy = (dy / dist) * maxPull;
+          }
+          cow.x = anchor.x + dx;
+          cow.y = anchor.y + dy;
+          e.preventDefault();
+        }
+
+        function endDrag(e) {
+          if (state !== 'dragging') return;
+          const dx = anchor.x - cow.x;
+          const dy = anchor.y - cow.y;
+          const dist = Math.sqrt((dx * dx) + (dy * dy));
+          if (dist < 12) {
+            cow.x = anchor.x;
+            cow.y = anchor.y;
+            state = 'aiming';
+            return;
+          }
+          cow.vx = dx * powerMultiplier;
+          cow.vy = dy * powerMultiplier;
+          cow.rotation = 0;
+          state = 'flying';
+          messageEl.textContent = 'Fly, cow, fly!';
+        }
+
+        canvas.addEventListener('mousedown', startDrag);
+        canvas.addEventListener('touchstart', startDrag, { passive: false });
+        window.addEventListener('mousemove', moveDrag);
+        window.addEventListener('touchmove', moveDrag, { passive: false });
+        window.addEventListener('mouseup', endDrag);
+        window.addEventListener('touchend', endDrag);
+
+        const resetBtn = document.getElementById('game-reset');
+        if (resetBtn) {
+          resetBtn.addEventListener('click', resetGame);
+        }
+
+        function update() {
+          if (state === 'flying') {
+            cow.vy += gravity;
+            cow.x += cow.vx;
+            cow.y += cow.vy;
+            cow.rotation += 0.35;
+
+            if (circleRectCollide(cow.x, cow.y, cow.r, houseHitBox())) {
+              state = 'hit';
+              houseShake = 18;
+              messageEl.textContent = 'Direct hit! Click Reset to fling again.';
+            } else if (cow.y - cow.r > groundY) {
+              state = 'miss';
+              messageEl.textContent = 'Missed the house! Click Reset to try again.';
+            } else if (cow.x - cow.r > W) {
+              state = 'miss';
+              messageEl.textContent = "That cow is never coming back. Click Reset to try again.";
+            }
+          }
+          if (houseShake > 0) houseShake--;
+        }
+
+        function drawSlingshot() {
+          const base = { x: anchor.x, y: groundY };
+          const leftTip = { x: anchor.x - 20, y: anchor.y - 45 };
+          const rightTip = { x: anchor.x + 20, y: anchor.y - 45 };
+
+          ctx.strokeStyle = colorBrown;
+          ctx.lineWidth = 6;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(base.x, base.y);
+          ctx.lineTo(leftTip.x, leftTip.y);
+          ctx.moveTo(base.x, base.y);
+          ctx.lineTo(rightTip.x, rightTip.y);
+          ctx.stroke();
+
+          if (state === 'aiming' || state === 'dragging') {
+            ctx.strokeStyle = '#5a4636';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(rightTip.x, rightTip.y);
+            ctx.lineTo(cow.x, cow.y);
+            ctx.stroke();
+          }
+
+          return { leftTip, rightTip };
+        }
+
+        function drawSlingshotFront(leftTip) {
+          if (state === 'aiming' || state === 'dragging') {
+            ctx.strokeStyle = '#5a4636';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(leftTip.x, leftTip.y);
+            ctx.lineTo(cow.x, cow.y);
+            ctx.stroke();
+          }
+        }
+
+        function drawHouse() {
+          const shakeX = houseShake > 0 ? (Math.random() - 0.5) * (houseShake / 2) : 0;
+          const hx = house.x + shakeX;
+
+          ctx.fillStyle = colorTan;
+          ctx.fillRect(hx, house.y, house.w, house.h);
+          ctx.strokeStyle = colorBrown;
+          ctx.lineWidth = 3;
+          ctx.strokeRect(hx, house.y, house.w, house.h);
+
+          ctx.beginPath();
+          ctx.moveTo(hx - 15, house.y);
+          ctx.lineTo(hx + (house.w / 2), house.y - house.roofH);
+          ctx.lineTo(hx + house.w + 15, house.y);
+          ctx.closePath();
+          ctx.fillStyle = colorBrown;
+          ctx.fill();
+
+          ctx.fillStyle = colorBrown;
+          ctx.fillRect(hx + (house.w / 2) - 15, house.y + house.h - 45, 30, 45);
+
+          ctx.fillStyle = colorSky;
+          ctx.fillRect(hx + 20, house.y + 20, 25, 25);
+          ctx.strokeStyle = colorBrown;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(hx + 20, house.y + 20, 25, 25);
+
+          ctx.fillStyle = colorSky;
+          ctx.fillRect(hx + house.w - 45, house.y + 20, 25, 25);
+          ctx.strokeRect(hx + house.w - 45, house.y + 20, 25, 25);
+        }
+
+        function drawCow() {
+          ctx.save();
+          ctx.translate(cow.x, cow.y);
+          if (state === 'flying') {
+            ctx.rotate(cow.rotation);
+          }
+
+          ctx.fillStyle = colorCream;
+          ctx.strokeStyle = colorBrown;
+          ctx.lineWidth = 2;
+
+          ctx.beginPath();
+          ctx.ellipse(0, 0, 20, 15, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = colorBrown;
+          ctx.beginPath();
+          ctx.ellipse(-8, -4, 5, 4, 0.3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.ellipse(6, 6, 4, 3, -0.2, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = colorCream;
+          ctx.beginPath();
+          ctx.arc(18, -2, 9, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = colorBrown;
+          ctx.beginPath();
+          ctx.ellipse(14, -10, 4, 3, 0.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.ellipse(24, -10, 4, 3, -0.5, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.arc(22, -3, 1.5, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.restore();
+        }
+
+        function draw() {
+          ctx.clearRect(0, 0, W, H);
+          ctx.fillStyle = colorSky;
+          ctx.fillRect(0, 0, W, H);
+          ctx.fillStyle = colorGrass;
+          ctx.fillRect(0, groundY, W, H - groundY);
+
+          drawHouse();
+          const tips = drawSlingshot();
+          drawCow();
+          drawSlingshotFront(tips.leftTip);
+        }
+
+        function loop() {
+          update();
+          draw();
+          requestAnimationFrame(loop);
+        }
+
+        resetGame();
+        loop();
+      }
     });
   </script>
 </body>
