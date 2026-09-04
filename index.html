@@ -385,10 +385,10 @@
         const W = canvas.width;
         const H = canvas.height;
         const groundY = 350;
-        const anchor = { x: 120, y: 290 };
-        const maxPull = 55;
+        const anchor = { x: 120, y: 265 };
+        const maxPull = 115;
         const gravity = 0.55;
-        const powerMultiplier = 0.24;
+        const powerMultiplier = 0.155;
         const house = { x: 620, y: groundY - 90, w: 130, h: 90, roofH: 55 };
         const messageEl = document.getElementById('game-message');
 
@@ -401,13 +401,81 @@
 
         let cow = { x: anchor.x, y: anchor.y, r: 20, vx: 0, vy: 0, rotation: 0 };
         let state = 'aiming'; // aiming | dragging | flying | hit | miss
-        let houseShake = 0;
+        let houseDestroyed = false;
+        let debris = [];
+        let dustParticles = [];
 
         function resetGame() {
           cow = { x: anchor.x, y: anchor.y, r: 20, vx: 0, vy: 0, rotation: 0 };
           state = 'aiming';
-          houseShake = 0;
+          houseDestroyed = false;
+          debris = [];
+          dustParticles = [];
           messageEl.textContent = 'Drag the cow back, then let go to launch.';
+        }
+
+        function spawnDebris() {
+          debris = [];
+          for (let i = 0; i < 18; i++) {
+            debris.push({
+              x: house.x + (Math.random() * house.w),
+              y: (house.y - house.roofH) + (Math.random() * (house.h + house.roofH)),
+              vx: (Math.random() - 0.5) * 14,
+              vy: -(4 + (Math.random() * 9)),
+              size: 7 + (Math.random() * 13),
+              rotation: Math.random() * Math.PI * 2,
+              rotSpeed: (Math.random() - 0.5) * 0.35,
+              color: Math.random() < 0.5 ? colorTan : colorBrown,
+              settled: false
+            });
+          }
+        }
+
+        function spawnDust() {
+          dustParticles = [];
+          const cx = house.x + (house.w / 2);
+          const cy = house.y + (house.h / 2);
+          for (let i = 0; i < 12; i++) {
+            dustParticles.push({
+              x: cx,
+              y: cy,
+              r: 8 + (Math.random() * 10),
+              vx: (Math.random() - 0.5) * 4,
+              vy: (Math.random() - 0.5) * 4,
+              alpha: 0.65,
+              growth: 1.3 + (Math.random() * 0.6)
+            });
+          }
+        }
+
+        function updateDebris() {
+          debris.forEach(p => {
+            if (p.settled) return;
+            p.vy += gravity;
+            p.x += p.vx;
+            p.y += p.vy;
+            p.rotation += p.rotSpeed;
+            if (p.y > groundY) {
+              p.y = groundY;
+              p.vy *= -0.3;
+              p.vx *= 0.6;
+              if (Math.abs(p.vy) < 1) {
+                p.settled = true;
+                p.vx = 0;
+                p.vy = 0;
+              }
+            }
+          });
+        }
+
+        function updateDust() {
+          dustParticles.forEach(p => {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.r += p.growth;
+            p.alpha -= 0.018;
+          });
+          dustParticles = dustParticles.filter(p => p.alpha > 0);
         }
 
         function getCanvasPos(e) {
@@ -504,10 +572,12 @@
             cow.y += cow.vy;
             cow.rotation += 0.35;
 
-            if (circleRectCollide(cow.x, cow.y, cow.r, houseHitBox())) {
+            if (!houseDestroyed && circleRectCollide(cow.x, cow.y, cow.r, houseHitBox())) {
               state = 'hit';
-              houseShake = 18;
-              messageEl.textContent = 'Direct hit! Click Reset to fling again.';
+              houseDestroyed = true;
+              spawnDebris();
+              spawnDust();
+              messageEl.textContent = 'UH OH TIME TO CALL FLFC! GET MOOVING!';
             } else if (cow.y - cow.r > groundY) {
               state = 'miss';
               messageEl.textContent = 'Missed the house! Click Reset to try again.';
@@ -516,7 +586,8 @@
               messageEl.textContent = "That cow is never coming back. Click Reset to try again.";
             }
           }
-          if (houseShake > 0) houseShake--;
+          updateDebris();
+          updateDust();
         }
 
         function drawSlingshot() {
@@ -558,8 +629,7 @@
         }
 
         function drawHouse() {
-          const shakeX = houseShake > 0 ? (Math.random() - 0.5) * (houseShake / 2) : 0;
-          const hx = house.x + shakeX;
+          const hx = house.x;
 
           ctx.fillStyle = colorTan;
           ctx.fillRect(hx, house.y, house.w, house.h);
@@ -634,6 +704,29 @@
           ctx.restore();
         }
 
+        function drawDebris() {
+          debris.forEach(p => {
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rotation);
+            ctx.fillStyle = p.color;
+            ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+            ctx.restore();
+          });
+        }
+
+        function drawDust() {
+          dustParticles.forEach(p => {
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, p.alpha);
+            ctx.fillStyle = '#8a8880';
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          });
+        }
+
         function draw() {
           ctx.clearRect(0, 0, W, H);
           ctx.fillStyle = colorSky;
@@ -641,10 +734,15 @@
           ctx.fillStyle = colorGrass;
           ctx.fillRect(0, groundY, W, H - groundY);
 
-          drawHouse();
+          if (houseDestroyed) {
+            drawDebris();
+          } else {
+            drawHouse();
+          }
           const tips = drawSlingshot();
           drawCow();
           drawSlingshotFront(tips.leftTip);
+          drawDust();
         }
 
         function loop() {
