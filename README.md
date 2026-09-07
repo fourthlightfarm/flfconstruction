@@ -35,8 +35,9 @@ automatically.
 
 - `index.html` — the main page (home, about, services, community impact, contact)
 - `portfolio.html` — a gallery of past projects (4 real photos + a "more coming soon" card)
-- `quote.html` — a "Request a Quote" form that opens the visitor's email app, pre-addressed to
-  fourthlightfarm@gmail.com, with their project details filled in
+- `pricing.html` — "Project Pricing": a financing callout (links to our Enhancify financing page) plus a quote
+  request form that opens the visitor's email app, pre-addressed to fourthlightfarm@gmail.com, with their project
+  details filled in
 - `theme.css` — colors, fonts, and styling (matches the Fourth Light Farm nonprofit site's palette)
 - `logo.png` — the FLFC logo (cow + saw silhouette with "FLFC LLC" text)
 - `images/` — portfolio project photos

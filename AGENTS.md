@@ -18,10 +18,14 @@ Static HTML pages. No framework, no build step, no package manager, no dependenc
   bottom of the file) that lets visitors step through all `.portfolio-thumb` photos with prev/next buttons, arrow
   keys, or Escape/backdrop-click to close. The lightbox JS reads the thumbnail list dynamically, so adding another
   `.portfolio-thumb` button automatically includes it in the slideshow — no JS changes needed for new photos.
-- `quote.html` — a quote-request form page. On submit it builds a `mailto:` link addressed to
-  `fourthlightfarm@gmail.com` (pre-filled subject/body from the form fields) and navigates the browser there — it
-  opens the visitor's own email app for them to hit send. There is no server-side form backend; nothing is silently
-  submitted in the background. See Deployment below for why, and what an upgrade would require.
+- `pricing.html` — renamed from `quote.html` on 2026-09-07 at the user's request. Has a "Financing Available" box
+  (no minimum project size; "certain individuals may qualify for 0% financing"; links out to the user's real
+  financing partner, Enhancify, at `https://www.enhancify.com/fourth-light-farm-construction` — don't change that
+  URL or invent different terms/partners without the user saying so) above the quote-request form. The form itself
+  is unchanged: on submit it builds a `mailto:` link addressed to `fourthlightfarm@gmail.com` (pre-filled
+  subject/body from the form fields) and navigates the browser there — it opens the visitor's own email app for them
+  to hit send. There is no server-side form backend; nothing is silently submitted in the background. See Deployment
+  below for why, and what an upgrade would require.
 - `theme.css` — all custom styling, layered on top of the Bulma CSS framework (loaded from a CDN, not vendored).
 - `logo.png` — the real FLFC logo (cow head + hand saw silhouette, recolored to `--flfc-earth-brown` with "FLFC LLC"
   text below it), generated 2026-08-21 from a source image the user supplied. Not a placeholder — don't regenerate or
@@ -33,13 +37,13 @@ Icons come from Font Awesome, loaded via CDN. There is no npm/node project here 
 bundler, or a frontend framework unless the user explicitly asks for that kind of overhaul.
 
 All three pages share the same nav bar and footer. When adding a nav item, page, or footer link, update it in
-`index.html`, `portfolio.html`, and `quote.html` together so they stay in sync — this bit them once already when
+`index.html`, `portfolio.html`, and `pricing.html` together so they stay in sync — this bit them once already when
 `mission.html` on the sister `flf` site drifted out of sync with `index.html`.
 
 ## Page structure
 
 `index.html`:
-- `#home` — hero section with logo, tagline, "Request a Quote" and "Our Services" buttons
+- `#home` — hero section with logo, tagline, "Get Pricing" and "Our Services" buttons
 - `#about` — About Us copy
 - `#services` — four service cards (General Contracting, Custom Tile, Rot Repair, Architectural Drafting). Cards use
   `height: 100%` + flex column layout (see `theme.css` `.card` rules) so they stay equal height regardless of how
@@ -64,10 +68,11 @@ All three pages share the same nav bar and footer. When adding a nav item, page,
   hook before committing. Real browsers run rAF normally; this is purely a tooling limitation.
 
 `portfolio.html` — page header, then a grid of project cards (see placeholders below), then a "Start Your Project"
-CTA linking to `quote.html`.
+CTA linking to `pricing.html`.
 
-`quote.html` — a single quote-request form (name, email, phone, service dropdown, address, project details) with
-inline validation, plus a fallback line with the phone number and email for people who'd rather not use the form.
+`pricing.html` — page header, then the "Financing Available" box, then the quote-request form (name, email, phone,
+service dropdown, address, project details) with inline validation, plus a fallback line with the phone number and
+email for people who'd rather not use the form.
 
 When asked to add a new card, section, or nav item, follow the existing pattern (Bulma `columns`/`column`/`card`
 classes) rather than introducing new layout systems.
@@ -107,7 +112,7 @@ pushed to `main` goes live automatically within a few minutes — same model as 
 - Don't push half-finished or obviously broken changes to `main`.
 - Only commit and push when the user actually confirms they want the change live — don't push proactively mid-
   conversation.
-- The `quote.html` form uses `mailto:` rather than a real backend specifically because this is a static site with no
+- The `pricing.html` form uses `mailto:` rather than a real backend specifically because this is a static site with no
   server. If the user wants true silent/one-click submission (no email app popup for the visitor), that requires a
   third-party form service (e.g. Formspree, Web3Forms) that *the user* signs up for themselves — an agent should
   never create such an account on their behalf. Once they have an endpoint/key, wire the form's `action` to it and
