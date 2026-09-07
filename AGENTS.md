@@ -70,8 +70,9 @@ All three pages share the same nav bar and footer. When adding a nav item, page,
 `portfolio.html` — page header, then a grid of project cards (see placeholders below), then a "Start Your Project"
 CTA linking to `pricing.html`.
 
-`pricing.html` — page header, then the "Financing Available" box, then the quote-request form (name, email, phone,
-service dropdown, address, project details) with inline validation, plus a fallback line with the phone number and
+`pricing.html` — page header, then the "Financing Available" box, then the quote-request form (name, email, address,
+and project details are required; phone and service dropdown are not) with inline validation, plus a fallback line
+with the phone number and
 email for people who'd rather not use the form.
 
 When asked to add a new card, section, or nav item, follow the existing pattern (Bulma `columns`/`column`/`card`

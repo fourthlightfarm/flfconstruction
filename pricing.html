@@ -152,13 +152,14 @@
               </div>
 
               <div class="field">
-                <label class="label" for="q-address">Property address or service area <span style="font-weight: 400; color: var(--flfc-medium-green);">(optional)</span></label>
+                <label class="label" for="q-address">Property address or service area</label>
                 <div class="control has-icons-left">
-                  <input class="input" type="text" id="q-address" name="address" placeholder="City or address">
+                  <input class="input" type="text" id="q-address" name="address" placeholder="City or address" required>
                   <span class="icon is-small is-left">
                     <i class="fas fa-location-dot"></i>
                   </span>
                 </div>
+                <p class="help is-danger is-hidden" id="q-address-error">Enter the city or address for this project.</p>
               </div>
 
               <div class="field">
@@ -262,10 +263,12 @@
 
       const nameInput = document.getElementById('q-name');
       const emailInput = document.getElementById('q-email');
+      const addressInput = document.getElementById('q-address');
       const detailsInput = document.getElementById('q-details');
 
       const nameError = document.getElementById('q-name-error');
       const emailError = document.getElementById('q-email-error');
+      const addressError = document.getElementById('q-address-error');
       const detailsError = document.getElementById('q-details-error');
 
       function clearError(input, errorEl) {
@@ -278,8 +281,8 @@
         errorEl.classList.remove('is-hidden');
       }
 
-      [nameInput, emailInput, detailsInput].forEach((input, i) => {
-        const errorEl = [nameError, emailError, detailsError][i];
+      [nameInput, emailInput, addressInput, detailsInput].forEach((input, i) => {
+        const errorEl = [nameError, emailError, addressError, detailsError][i];
         input.addEventListener('input', () => clearError(input, errorEl));
       });
 
@@ -304,6 +307,13 @@
           clearError(emailInput, emailError);
         }
 
+        if (!addressInput.value.trim()) {
+          showError(addressInput, addressError);
+          valid = false;
+        } else {
+          clearError(addressInput, addressError);
+        }
+
         if (!detailsInput.value.trim()) {
           showError(detailsInput, detailsError);
           valid = false;
@@ -319,7 +329,7 @@
         const email = emailInput.value.trim();
         const phone = document.getElementById('q-phone').value.trim();
         const service = document.getElementById('q-service').value;
-        const address = document.getElementById('q-address').value.trim();
+        const address = addressInput.value.trim();
         const details = detailsInput.value.trim();
 
         const subject = `Quote request from ${name} - ${service}`;
