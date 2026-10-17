@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>FLFC Time</title>
+  <style>
+    :root {
+      --brown: #3e2c1f; --green: #8a9b7a; --sage: #b8c5a8; --tan: #e8e3d5; --cream: #f5f2ea; --ink: #2b2423;
+      --red: #a33a2b; --ok: #3d6b3a;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background: var(--cream); color: var(--ink); }
+    main { max-width: 480px; margin: 0 auto; padding: 20px 16px 40px; }
+    header { text-align: center; margin-bottom: 12px; }
+    header img { max-width: 220px; width: 60%; height: auto; }
+    h1 { font-size: 20px; margin: 4px 0 0; color: var(--brown); }
+    h2 { font-size: 16px; margin: 0 0 10px; color: var(--brown); }
+    .card { background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.12); padding: 16px; margin-top: 14px; }
+    label { display: block; font-size: 13px; font-weight: 600; margin: 10px 0 4px; color: var(--brown); }
+    input, select, textarea { width: 100%; font: inherit; font-size: 17px; padding: 12px; border: 1px solid #b9b2a2; border-radius: 8px; background: #fff; color: var(--ink); }
+    input:focus, select:focus, textarea:focus { outline: 3px solid var(--sage); border-color: var(--green); }
+    button { width: 100%; min-height: 54px; margin-top: 12px; font: inherit; font-size: 18px; font-weight: 700; border: 0; border-radius: 10px; cursor: pointer; background: var(--brown); color: #fff; }
+    button.green { background: var(--green); }
+    button.plain { background: transparent; color: var(--brown); border: 2px solid var(--brown); min-height: 46px; font-size: 16px; }
+    button:disabled { opacity: .55; cursor: default; }
+    .row { display: flex; gap: 10px; }
+    .row > div { flex: 1; }
+    #banner { display: none; margin-top: 12px; padding: 12px 14px; border-radius: 8px; font-weight: 600; }
+    #banner.ok { display: block; background: #e3f0e1; color: var(--ok); }
+    #banner.err { display: block; background: #f7e2de; color: var(--red); }
+    .status { text-align: center; padding: 14px; border-radius: 10px; background: var(--tan); font-size: 17px; }
+    .status.on { background: #e3f0e1; }
+    .status big { display: block; font-size: 30px; font-weight: 700; margin-top: 4px; }
+    .hint { font-size: 13px; color: #6b6359; margin-top: 6px; }
+    .check { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 15px; }
+    .check input { width: 22px; height: 22px; }
+    ul { list-style: none; margin: 0; padding: 0; }
+    li { padding: 10px 0; border-bottom: 1px solid #eee; font-size: 15px; display: flex; justify-content: space-between; gap: 10px; }
+    li:last-child { border-bottom: 0; }
+    li small { display: block; color: #6b6359; }
+    li b { white-space: nowrap; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="logo.png" alt="Fourth Light Farm Construction, LLC">
+    <h1>Time portal</h1>
+  </header>
+
+  <div id="banner" role="status"></div>
+
+  <section id="login" class="card">
+    <h2>Sign in</h2>
+    <form id="loginForm" autocomplete="off">
+      <label for="pin">Your 6-digit PIN</label>
+      <input id="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" required>
+      <div class="check"><input id="remember" type="checkbox"><label for="remember" style="margin:0;font-weight:400">Remember me on this phone</label></div>
+      <button type="submit" id="loginBtn">Continue</button>
+    </form>
+  </section>
+
+  <div id="app" hidden>
+    <section class="card">
+      <h2 id="hello">Hi</h2>
+      <div id="status" class="status">Not clocked in</div>
+
+      <form id="inForm" autocomplete="off">
+        <label for="inJob">Job</label>
+        <input id="inJob" list="jobs" maxlength="80" placeholder="Customer or job name" required>
+        <button type="submit" class="green" id="inBtn">Clock in</button>
+      </form>
+
+      <form id="outForm" hidden>
+        <label for="outNote">Note (optional)</label>
+        <input id="outNote" maxlength="200" placeholder="Anything to add?">
+        <button type="submit" id="outBtn">Clock out</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Enter hours</h2>
+      <form id="manualForm" autocomplete="off">
+        <label for="mDate">Date</label>
+        <input id="mDate" type="date" required>
+        <label for="mJob">Job</label>
+        <input id="mJob" list="jobs" maxlength="80" placeholder="Customer or job name" required>
+        <label for="mHours">Hours worked</label>
+        <input id="mHours" type="number" inputmode="decimal" step="0.25" min="0" max="24" placeholder="e.g. 7.5">
+        <div class="check"><input id="useTimes" type="checkbox"><label for="useTimes" style="margin:0;font-weight:400">Use start and end times instead</label></div>
+        <div id="timeRow" class="row" hidden>
+          <div><label for="mStart">Start</label><input id="mStart" type="time"></div>
+          <div><label for="mEnd">End</label><input id="mEnd" type="time"></div>
+        </div>
+        <label for="mNote">Note (optional)</label>
+        <input id="mNote" maxlength="200">
+        <button type="submit" id="mBtn">Save hours</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Your recent entries</h2>
+      <ul id="recent"></ul>
+    </section>
+
+    <button type="button" class="plain" id="logout">Sign out</button>
+  </div>
+
+  <datalist id="jobs"></datalist>
+</main>
+
+<script>
+  var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzfoIKLLgJyYMp7r3HM3UrCxvJiYmd2NYu2VzReqCRsHCetv9fVVGW_TSR-j6yC9yQ/exec';
+  var TZ = 'America/New_York';
+  var pin = '';
+  var timer = null;
+
+  function $(id) { return document.getElementById(id); }
+
+  function banner(msg, kind) {
+    var b = $('banner');
+    if (!msg) { b.className = ''; b.textContent = ''; return; }
+    b.textContent = msg;
+    b.className = kind === 'ok' ? 'ok' : 'err';
+  }
+
+  function busy(on) {
+    var btns = document.querySelectorAll('button');
+    for (var i = 0; i < btns.length; i++) btns[i].disabled = on;
+  }
+
+  function api(payload) {
+    if (SCRIPT_URL.indexOf('http') !== 0) {
+      return Promise.reject(new Error('The time portal is not connected yet.'));
+    }
+    payload.pin = pin;
+    return fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) })
+      .then(function (res) { return res.json(); });
+  }
+
+  function fmtTime(iso) {
+    return new Date(iso).toLocaleTimeString('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' });
+  }
+
+  function fmtDay(ymd) {
+    var p = ymd.split('-');
+    return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+
+  function todayNY() {
+    return new Date().toLocaleDateString('en-CA', { timeZone: TZ });
+  }
+
+  function elapsedText(startIso) {
+    var mins = Math.max(0, Math.floor((Date.now() - Date.parse(startIso)) / 60000));
+    var h = Math.floor(mins / 60);
+    var m = mins % 60;
+    return h + ' hr ' + (m < 10 ? '0' : '') + m + ' min';
+  }
+
+  function render(d) {
+    $('login').hidden = true;
+    $('app').hidden = false;
+    $('hello').textContent = 'Hi, ' + d.name;
+
+    var jobs = $('jobs');
+    jobs.innerHTML = '';
+    (d.jobs || []).forEach(function (j) {
+      var o = document.createElement('option');
+      o.value = j;
+      jobs.appendChild(o);
+    });
+
+    var st = $('status');
+    if (timer) { clearInterval(timer); timer = null; }
+    if (d.clockedIn && d.open) {
+      st.className = 'status on';
+      var draw = function () {
+        st.textContent = '';
+        st.appendChild(document.createTextNode('Clocked in at ' + fmtTime(d.open.start) + ' on ' + d.open.job));
+        var big = document.createElement('big');
+        big.textContent = elapsedText(d.open.start);
+        st.appendChild(big);
+      };
+      draw();
+      timer = setInterval(draw, 30000);
+      $('inForm').hidden = true;
+      $('outForm').hidden = false;
+    } else {
+      st.className = 'status';
+      st.textContent = 'Not clocked in';
+      $('inForm').hidden = false;
+      $('outForm').hidden = true;
+    }
+
+    var ul = $('recent');
+    ul.innerHTML = '';
+    if (!d.recent || !d.recent.length) {
+      var li = document.createElement('li');
+      li.textContent = 'No entries yet.';
+      ul.appendChild(li);
+    }
+    (d.recent || []).forEach(function (r) {
+      var li = document.createElement('li');
+      var left = document.createElement('div');
+      left.textContent = r.job;
+      var small = document.createElement('small');
+      var when = fmtDay(r.date);
+      if (r.start && r.end) when += ', ' + fmtTime(r.start) + ' to ' + fmtTime(r.end);
+      else if (r.start) when += ', started ' + fmtTime(r.start);
+      small.textContent = when;
+      left.appendChild(small);
+      var right = document.createElement('b');
+      right.textContent = (r.hours === null || r.hours === undefined) ? 'open' : r.hours.toFixed(2) + ' hr';
+      li.appendChild(left);
+      li.appendChild(right);
+      ul.appendChild(li);
+    });
+  }
+
+  function run(payload, okMessage) {
+    banner('');
+    busy(true);
+    return api(payload).then(function (d) {
+      busy(false);
+      if (!d || !d.ok) {
+        banner((d && d.error) || 'Something went wrong. Try again.', 'err');
+        return null;
+      }
+      render(d);
+      banner(d.message || okMessage || '', d.message || okMessage ? 'ok' : '');
+      return d;
+    }).catch(function (e) {
+      busy(false);
+      banner(e && e.message ? e.message : 'Could not reach the time portal. Check your signal and try again.', 'err');
+      return null;
+    });
+  }
+
+  function login(p, remember) {
+    pin = p;
+    return run({ action: 'status' }).then(function (d) {
+      if (d) {
+        try { if (remember) localStorage.setItem('flfc_pin', p); } catch (e) {}
+      } else {
+        pin = '';
+        try { localStorage.removeItem('flfc_pin'); } catch (e) {}
+      }
+    });
+  }
+
+  $('loginForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var p = $('pin').value.trim();
+    if (!/^\d{6}$/.test(p)) { banner('Enter your 6-digit PIN.', 'err'); return; }
+    login(p, $('remember').checked);
+  });
+
+  $('inForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var job = $('inJob').value.trim();
+    if (!job) { banner('Enter the job.', 'err'); return; }
+    run({ action: 'clockin', job: job }).then(function (d) { if (d) $('inJob').value = ''; });
+  });
+
+  $('outForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    run({ action: 'clockout', note: $('outNote').value.trim() }).then(function (d) { if (d) $('outNote').value = ''; });
+  });
+
+  $('useTimes').addEventListener('change', function () {
+    $('timeRow').hidden = !this.checked;
+    $('mHours').disabled = this.checked;
+  });
+
+  $('manualForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var payload = { action: 'manual', date: $('mDate').value, job: $('mJob').value.trim(), note: $('mNote').value.trim() };
+    if ($('useTimes').checked) {
+      if (!$('mStart').value || !$('mEnd').value) { banner('Enter both a start and an end time.', 'err'); return; }
+      payload.start = $('mStart').value;
+      payload.end = $('mEnd').value;
+    } else {
+      var h = parseFloat($('mHours').value);
+      if (!(h > 0 && h <= 24)) { banner('Enter hours between 0 and 24.', 'err'); return; }
+      payload.hours = h;
+    }
+    if (!payload.date) { banner('Pick a date.', 'err'); return; }
+    if (!payload.job) { banner('Enter the job.', 'err'); return; }
+    run(payload).then(function (d) {
+      if (d) { $('mJob').value = ''; $('mHours').value = ''; $('mNote').value = ''; $('mStart').value = ''; $('mEnd').value = ''; }
+    });
+  });
+
+  $('logout').addEventListener('click', function () {
+    pin = '';
+    try { localStorage.removeItem('flfc_pin'); } catch (e) {}
+    if (timer) { clearInterval(timer); timer = null; }
+    $('app').hidden = true;
+    $('login').hidden = false;
+    $('pin').value = '';
+    banner('');
+  });
+
+  $('mDate').value = todayNY();
+  try {
+    var saved = localStorage.getItem('flfc_pin');
+    if (saved && /^\d{6}$/.test(saved)) login(saved, true);
+  } catch (e) {}
+</script>
+</body>
+</html>
