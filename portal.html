@@ -54,9 +54,9 @@
   <section id="login" class="card">
     <h2>Sign in</h2>
     <form id="loginForm" autocomplete="off">
-      <div id="codeRow" hidden>
-        <label for="code">Your customer code</label>
-        <input id="code" type="text" maxlength="40" autocapitalize="none">
+      <div id="nameRow">
+        <label for="nameIn">Your name</label>
+        <input id="nameIn" type="text" maxlength="80" autocomplete="name" placeholder="As it appears on your invoice">
       </div>
       <label for="pin">Your 6-digit PIN</label>
       <input id="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" required>
@@ -103,6 +103,7 @@
 <script>
   var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyKt8n1OyifhygvgJ8eu7BnMTfq-e7CvAl9ybYnbnYMwLshshdqQi1GANG42rVTY3ii/exec';
   var cust = '';
+  var custName = '';
   var pin = '';
 
   function $(id) { return document.getElementById(id); }
@@ -131,7 +132,7 @@
   }
   function api(payload) {
     if (SCRIPT_URL.indexOf('http') !== 0) return Promise.reject(new Error('The portal is not connected yet.'));
-    payload.c = cust;
+    if (custName) payload.name = custName; else payload.c = cust;
     payload.pin = pin;
     return fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) }).then(function (r) { return r.json(); });
   }
@@ -247,12 +248,13 @@
 
   $('loginForm').addEventListener('submit', function (e) {
     e.preventDefault();
-    var code = $('codeRow').hidden ? cust : $('code').value.trim().toLowerCase();
+    var nm = $('nameIn').value.trim();
     var p = $('pin').value.trim();
-    if (!/^[a-z0-9-]{3,40}$/.test(code)) { banner('Enter your customer code.', 'err'); return; }
+    if ($('nameRow').hidden) { nm = ''; }
+    else if (!nm) { banner('Enter your name.', 'err'); return; }
     if (!/^\d{6}$/.test(p)) { banner('Enter your 6-digit PIN.', 'err'); return; }
-    cust = code; pin = p;
-    run({ action: 'view' }).then(function (d) { if (!d) { pin = ''; } });
+    custName = nm; pin = p;
+    run({ action: 'view' }).then(function (d) { if (!d) { pin = ''; custName = ''; } });
   });
 
   $('generalForm').addEventListener('submit', function (e) {
@@ -264,6 +266,8 @@
 
   $('logout').addEventListener('click', function () {
     pin = '';
+    custName = '';
+    $('nameIn').value = '';
     $('app').hidden = true;
     $('login').hidden = false;
     $('pin').value = '';
@@ -272,8 +276,7 @@
 
   (function init() {
     var m = /[?&]c=([^&]+)/.exec(location.search);
-    if (m) { cust = decodeURIComponent(m[1]).toLowerCase(); }
-    else { $('codeRow').hidden = false; }
+    if (m) { cust = decodeURIComponent(m[1]).toLowerCase(); $('nameRow').hidden = true; }
   })();
 </script>
 </body>
