@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Customer Portal | Fourth Light Farm Construction</title>
+  <style>
+    :root { --brown:#3e2c1f; --green:#8a9b7a; --sage:#b8c5a8; --tan:#e8e3d5; --cream:#f5f2ea; --ink:#2b2423; --red:#a33a2b; --ok:#2f5a2b; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:'Segoe UI',Tahoma,Arial,sans-serif; background:var(--cream); color:var(--ink); }
+    main { max-width:720px; margin:0 auto; padding:18px 14px 50px; }
+    header { text-align:center; margin-bottom:10px; }
+    header img { max-width:210px; width:55%; height:auto; }
+    h1 { font-size:20px; margin:4px 0 0; color:var(--brown); }
+    h2 { font-size:16px; margin:0 0 10px; color:var(--brown); }
+    .card { background:#fff; border-radius:10px; box-shadow:0 1px 4px rgba(0,0,0,.12); padding:16px; margin-top:14px; }
+    label { display:block; font-size:13px; font-weight:600; margin:10px 0 4px; color:var(--brown); }
+    input, select, textarea { width:100%; font:inherit; font-size:16px; padding:11px; border:1px solid #b9b2a2; border-radius:8px; background:#fff; color:var(--ink); }
+    textarea { min-height:90px; resize:vertical; }
+    button { font:inherit; font-size:16px; font-weight:700; border:0; border-radius:10px; cursor:pointer; background:var(--brown); color:#fff; padding:12px 16px; min-height:46px; }
+    button.full { width:100%; margin-top:12px; }
+    button.small { min-height:34px; padding:6px 12px; font-size:13px; background:transparent; color:var(--brown); border:1.5px solid var(--brown); }
+    button.pay, a.pay { display:inline-block; background:var(--green); color:#fff; text-decoration:none; font-weight:700; border-radius:8px; padding:8px 14px; font-size:14px; }
+    button:disabled { opacity:.55; cursor:default; }
+    #banner { display:none; margin-top:12px; padding:12px 14px; border-radius:8px; font-weight:600; }
+    #banner.ok { display:block; background:#e3f0e1; color:var(--ok); }
+    #banner.err { display:block; background:#f7e2de; color:var(--red); }
+    .stage { display:inline-block; background:var(--sage); color:var(--brown); padding:4px 14px; border-radius:14px; font-weight:700; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; margin-top:10px; }
+    .stat { background:var(--tan); border-radius:8px; padding:10px; text-align:center; }
+    .stat b { display:block; font-size:19px; color:var(--brown); }
+    .stat span { font-size:12px; color:#6b6359; }
+    .row { padding:11px 0; border-bottom:1px solid #eee; }
+    .row:last-child { border-bottom:0; }
+    .top { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+    .muted { color:#6b6359; font-size:13px; }
+    .badge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:12px; font-weight:700; white-space:nowrap; }
+    .Paid { background:#dcebd6; color:#2f5a2b; } .Pending { background:#f5e6b3; color:#6b4e00; } .Not-paid { background:#f7e2de; color:#a33a2b; }
+    .flagbox { margin-top:8px; padding:10px; background:var(--cream); border-radius:8px; }
+    .reply { margin-top:6px; padding:8px 10px; background:#e3f0e1; border-radius:8px; font-size:14px; }
+    [hidden] { display:none !important; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="logo.png" alt="Fourth Light Farm Construction, LLC">
+    <h1>Customer portal</h1>
+  </header>
+
+  <div id="banner" role="status"></div>
+
+  <section id="login" class="card">
+    <h2>Sign in</h2>
+    <form id="loginForm" autocomplete="off">
+      <div id="codeRow" hidden>
+        <label for="code">Your customer code</label>
+        <input id="code" type="text" maxlength="40" autocapitalize="none">
+      </div>
+      <label for="pin">Your 6-digit PIN</label>
+      <input id="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" required>
+      <button type="submit" class="full" id="loginBtn">View my project</button>
+    </form>
+  </section>
+
+  <div id="app" hidden>
+    <section class="card">
+      <h2 id="hello">Hello</h2>
+      <div><span class="stage" id="stage"></span></div>
+      <p class="muted" id="next" style="margin:8px 0 0"></p>
+      <p class="muted" id="updated" style="margin:4px 0 0"></p>
+      <div class="grid">
+        <div class="stat"><b id="sCosts">$0.00</b><span>Project costs so far</span></div>
+        <div class="stat"><b id="sInv">$0.00</b><span>Invoiced</span></div>
+        <div class="stat"><b id="sPaid">$0.00</b><span>Paid</span></div>
+        <div class="stat"><b id="sUnpaid">$0.00</b><span>Still due</span></div>
+      </div>
+    </section>
+
+    <section class="card"><h2>Invoices</h2><div id="invoices"></div></section>
+    <section class="card"><h2>Project updates</h2><div id="updates"></div></section>
+    <section class="card"><h2>Costs and line items</h2><div id="items"></div></section>
+
+    <section class="card">
+      <h2>Send us a message</h2>
+      <form id="generalForm">
+        <label for="gType">This is a</label>
+        <select id="gType"><option>Question</option><option>Flag</option></select>
+        <label for="gText">Message</label>
+        <textarea id="gText" maxlength="1000"></textarea>
+        <button type="submit" class="full">Send</button>
+      </form>
+    </section>
+
+    <section class="card"><h2>Your messages</h2><div id="messages"></div></section>
+
+    <p class="muted" style="text-align:center;margin-top:16px">Questions? Call <a href="tel:+16032651380">(603) 265-1380</a>.</p>
+    <button type="button" class="small" id="logout" style="display:block;margin:14px auto 0">Sign out</button>
+  </div>
+</main>
+
+<script>
+  var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyKt8n1OyifhygvgJ8eu7BnMTfq-e7CvAl9ybYnbnYMwLshshdqQi1GANG42rVTY3ii/exec';
+  var cust = '';
+  var pin = '';
+
+  function $(id) { return document.getElementById(id); }
+  function money(n) { return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function fmtDay(ymd) {
+    if (!ymd) return '';
+    var p = String(ymd).split('-');
+    if (p.length !== 3) return ymd;
+    return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+  function el(tag, text, cls) {
+    var e = document.createElement(tag);
+    if (text !== undefined && text !== null) e.textContent = text;
+    if (cls) e.className = cls;
+    return e;
+  }
+  function banner(msg, kind) {
+    var b = $('banner');
+    if (!msg) { b.className = ''; b.textContent = ''; return; }
+    b.textContent = msg;
+    b.className = kind === 'ok' ? 'ok' : 'err';
+  }
+  function busy(on) {
+    var btns = document.querySelectorAll('button');
+    for (var i = 0; i < btns.length; i++) btns[i].disabled = on;
+  }
+  function api(payload) {
+    if (SCRIPT_URL.indexOf('http') !== 0) return Promise.reject(new Error('The portal is not connected yet.'));
+    payload.c = cust;
+    payload.pin = pin;
+    return fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) }).then(function (r) { return r.json(); });
+  }
+
+  function flagBox(ref, label) {
+    var wrap = el('div');
+    var btn = el('button', 'Flag or ask about this', 'small');
+    btn.type = 'button';
+    var box = el('div', null, 'flagbox');
+    box.hidden = true;
+    var sel = el('select');
+    ['Question', 'Flag'].forEach(function (t) { var o = el('option', t); sel.appendChild(o); });
+    var ta = el('textarea');
+    ta.maxLength = 1000;
+    ta.placeholder = 'Your message about: ' + label;
+    var send = el('button', 'Send', 'full');
+    send.type = 'button';
+    box.appendChild(sel); box.appendChild(ta); box.appendChild(send);
+    btn.addEventListener('click', function () { box.hidden = !box.hidden; });
+    send.addEventListener('click', function () {
+      if (!ta.value.trim()) { banner('Type your message first.', 'err'); return; }
+      run({ action: 'message', ref: ref, type: sel.value, text: ta.value.trim() });
+    });
+    wrap.appendChild(btn); wrap.appendChild(box);
+    return wrap;
+  }
+
+  function render(d) {
+    $('login').hidden = true;
+    $('app').hidden = false;
+    $('hello').textContent = 'Hello, ' + d.name;
+    $('stage').textContent = d.stage || 'Getting started';
+    $('next').textContent = d.next ? 'Next step: ' + d.next : '';
+    $('updated').textContent = d.updated ? 'Last updated ' + fmtDay(d.updated) : '';
+    $('sCosts').textContent = money(d.summary.costs);
+    $('sInv').textContent = money(d.summary.invoiced);
+    $('sPaid').textContent = money(d.summary.paid);
+    $('sUnpaid').textContent = money(d.summary.unpaid);
+
+    var inv = $('invoices'); inv.innerHTML = '';
+    if (!d.invoices.length) inv.appendChild(el('p', 'No invoices yet.', 'muted'));
+    d.invoices.forEach(function (i) {
+      var row = el('div', null, 'row');
+      var top = el('div', null, 'top');
+      var left = el('div');
+      left.appendChild(el('b', 'Invoice ' + i.number + ' - ' + money(i.amount)));
+      left.appendChild(el('div', fmtDay(i.date) + (i.note ? ' - ' + i.note : ''), 'muted'));
+      top.appendChild(left);
+      top.appendChild(el('span', i.status, 'badge ' + i.status.replace(' ', '-')));
+      row.appendChild(top);
+      if (i.link) {
+        var a = el('a', 'Pay this invoice', 'pay');
+        a.href = i.link; a.target = '_blank'; a.rel = 'noopener noreferrer';
+        var p = el('div'); p.style.marginTop = '8px'; p.appendChild(a); row.appendChild(p);
+      }
+      var fb = flagBox(i.ref, 'Invoice ' + i.number); fb.style.marginTop = '8px'; row.appendChild(fb);
+      inv.appendChild(row);
+    });
+
+    var up = $('updates'); up.innerHTML = '';
+    if (!d.updates.length) up.appendChild(el('p', 'No updates yet.', 'muted'));
+    d.updates.forEach(function (u) {
+      var row = el('div', null, 'row');
+      row.appendChild(el('b', u.title));
+      row.appendChild(el('div', fmtDay(u.date), 'muted'));
+      if (u.details) row.appendChild(el('p', u.details));
+      var fb = flagBox(u.ref, u.title); row.appendChild(fb);
+      up.appendChild(row);
+    });
+
+    var it = $('items'); it.innerHTML = '';
+    if (!d.items.length) it.appendChild(el('p', 'No line items yet.', 'muted'));
+    d.items.forEach(function (x) {
+      var row = el('div', null, 'row');
+      var top = el('div', null, 'top');
+      var left = el('div');
+      left.appendChild(el('b', x.category + (x.type && x.type !== 'Original' ? ' (' + x.type + ')' : '')));
+      left.appendChild(el('div', x.description + ' - ' + fmtDay(x.date), 'muted'));
+      top.appendChild(left);
+      top.appendChild(el('b', money(x.amount)));
+      row.appendChild(top);
+      row.appendChild(flagBox(x.ref, x.description));
+      it.appendChild(row);
+    });
+
+    var ms = $('messages'); ms.innerHTML = '';
+    if (!d.messages.length) ms.appendChild(el('p', 'No messages yet.', 'muted'));
+    d.messages.forEach(function (m) {
+      var row = el('div', null, 'row');
+      row.appendChild(el('b', m.type + ' - ' + (m.about || 'General')));
+      row.appendChild(el('div', fmtDay(m.date) + ' - ' + (m.status || 'New'), 'muted'));
+      row.appendChild(el('p', m.text));
+      if (m.reply) row.appendChild(el('div', 'Reply: ' + m.reply, 'reply'));
+      ms.appendChild(row);
+    });
+  }
+
+  function run(payload) {
+    banner('');
+    busy(true);
+    return api(payload).then(function (d) {
+      busy(false);
+      if (!d || !d.ok) { banner((d && d.error) || 'Something went wrong. Try again.', 'err'); return null; }
+      render(d);
+      if (d.notice) banner(d.notice, 'ok');
+      return d;
+    }).catch(function (e) {
+      busy(false);
+      banner(e && e.message ? e.message : 'Could not reach the portal. Check your signal and try again.', 'err');
+      return null;
+    });
+  }
+
+  $('loginForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var code = $('codeRow').hidden ? cust : $('code').value.trim().toLowerCase();
+    var p = $('pin').value.trim();
+    if (!/^[a-z0-9-]{3,40}$/.test(code)) { banner('Enter your customer code.', 'err'); return; }
+    if (!/^\d{6}$/.test(p)) { banner('Enter your 6-digit PIN.', 'err'); return; }
+    cust = code; pin = p;
+    run({ action: 'view' }).then(function (d) { if (!d) { pin = ''; } });
+  });
+
+  $('generalForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var t = $('gText').value.trim();
+    if (!t) { banner('Type your message first.', 'err'); return; }
+    run({ action: 'message', type: $('gType').value, text: t }).then(function (d) { if (d) $('gText').value = ''; });
+  });
+
+  $('logout').addEventListener('click', function () {
+    pin = '';
+    $('app').hidden = true;
+    $('login').hidden = false;
+    $('pin').value = '';
+    banner('');
+  });
+
+  (function init() {
+    var m = /[?&]c=([^&]+)/.exec(location.search);
+    if (m) { cust = decodeURIComponent(m[1]).toLowerCase(); }
+    else { $('codeRow').hidden = false; }
+  })();
+</script>
+</body>
+</html>
