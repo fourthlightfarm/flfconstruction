@@ -39,6 +39,16 @@
     .Paid { background:#dcebd6; color:#2f5a2b; } .Pending { background:#f5e6b3; color:#6b4e00; } .Not-paid { background:#f7e2de; color:#a33a2b; }
     .flagbox { margin-top:8px; padding:10px; background:var(--cream); border-radius:8px; }
     .reply { margin-top:6px; padding:8px 10px; background:#e3f0e1; border-radius:8px; font-size:14px; }
+    h2.group { margin:22px 2px 0; font-size:17px; }
+    details.job { background:#fff; border-radius:10px; box-shadow:0 1px 4px rgba(0,0,0,.12); margin-top:12px; }
+    details.job > summary { list-style:none; cursor:pointer; padding:14px 16px; display:flex; justify-content:space-between; align-items:center; gap:10px; }
+    details.job > summary::-webkit-details-marker { display:none; }
+    details.job > summary b { font-size:17px; color:var(--brown); }
+    details.job > summary::after { content:'\25BE'; color:var(--brown); font-size:18px; }
+    details.job[open] > summary::after { content:'\25B4'; }
+    .jobbody { padding:0 16px 16px; }
+    .jobbody h3 { font-size:15px; margin:16px 0 4px; color:var(--brown); }
+    .stage.done { background:var(--tan); }
     [hidden] { display:none !important; }
   </style>
 </head>
@@ -67,9 +77,7 @@
   <div id="app" hidden>
     <section class="card">
       <h2 id="hello">Hello</h2>
-      <div><span class="stage" id="stage"></span></div>
-      <p class="muted" id="next" style="margin:8px 0 0"></p>
-      <p class="muted" id="updated" style="margin:4px 0 0"></p>
+      <p class="muted" style="margin:0">All of your jobs together</p>
       <div class="grid">
         <div class="stat"><b id="sCosts">$0.00</b><span>Project costs so far</span></div>
         <div class="stat"><b id="sInv">$0.00</b><span>Invoiced</span></div>
@@ -78,9 +86,14 @@
       </div>
     </section>
 
-    <section class="card"><h2>Invoices</h2><div id="invoices"></div></section>
-    <section class="card"><h2>Project updates</h2><div id="updates"></div></section>
-    <section class="card"><h2>Costs and line items</h2><div id="items"></div></section>
+    <div id="activeWrap">
+      <h2 class="group">Jobs in progress</h2>
+      <div id="jobsActive"></div>
+    </div>
+    <div id="doneWrap">
+      <h2 class="group">Completed jobs</h2>
+      <div id="jobsDone"></div>
+    </div>
 
     <section class="card">
       <h2>Send us a message</h2>
@@ -101,7 +114,7 @@
 </main>
 
 <script>
-  var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyKt8n1OyifhygvgJ8eu7BnMTfq-e7CvAl9ybYnbnYMwLshshdqQi1GANG42rVTY3ii/exec';
+  var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwIpw5AZRQRBiFH3PYEdqzyKQlK5oIWLYQBtKc16IDFqXxhHheYxkjRCMt2pLC8Ip0Q/exec';
   var cust = '';
   var custName = '';
   var pin = '';
@@ -160,21 +173,9 @@
     return wrap;
   }
 
-  function render(d) {
-    $('login').hidden = true;
-    $('app').hidden = false;
-    $('hello').textContent = 'Hello, ' + d.name;
-    $('stage').textContent = d.stage || 'Getting started';
-    $('next').textContent = d.next ? 'Next step: ' + d.next : '';
-    $('updated').textContent = d.updated ? 'Last updated ' + fmtDay(d.updated) : '';
-    $('sCosts').textContent = money(d.summary.costs);
-    $('sInv').textContent = money(d.summary.invoiced);
-    $('sPaid').textContent = money(d.summary.paid);
-    $('sUnpaid').textContent = money(d.summary.unpaid);
-
-    var inv = $('invoices'); inv.innerHTML = '';
-    if (!d.invoices.length) inv.appendChild(el('p', 'No invoices yet.', 'muted'));
-    d.invoices.forEach(function (i) {
+  function listInvoices(box, list) {
+    if (!list.length) box.appendChild(el('p', 'No invoices yet.', 'muted'));
+    list.forEach(function (i) {
       var row = el('div', null, 'row');
       var top = el('div', null, 'top');
       var left = el('div');
@@ -189,23 +190,25 @@
         var p = el('div'); p.style.marginTop = '8px'; p.appendChild(a); row.appendChild(p);
       }
       var fb = flagBox(i.ref, 'Invoice ' + i.number); fb.style.marginTop = '8px'; row.appendChild(fb);
-      inv.appendChild(row);
+      box.appendChild(row);
     });
+  }
 
-    var up = $('updates'); up.innerHTML = '';
-    if (!d.updates.length) up.appendChild(el('p', 'No updates yet.', 'muted'));
-    d.updates.forEach(function (u) {
+  function listUpdates(box, list) {
+    if (!list.length) box.appendChild(el('p', 'No updates yet.', 'muted'));
+    list.forEach(function (u) {
       var row = el('div', null, 'row');
       row.appendChild(el('b', u.title));
       row.appendChild(el('div', fmtDay(u.date), 'muted'));
       if (u.details) row.appendChild(el('p', u.details));
-      var fb = flagBox(u.ref, u.title); row.appendChild(fb);
-      up.appendChild(row);
+      row.appendChild(flagBox(u.ref, u.title));
+      box.appendChild(row);
     });
+  }
 
-    var it = $('items'); it.innerHTML = '';
-    if (!d.items.length) it.appendChild(el('p', 'No line items yet.', 'muted'));
-    d.items.forEach(function (x) {
+  function listItems(box, list) {
+    if (!list.length) box.appendChild(el('p', 'No line items yet.', 'muted'));
+    list.forEach(function (x) {
       var row = el('div', null, 'row');
       var top = el('div', null, 'top');
       var left = el('div');
@@ -215,9 +218,59 @@
       top.appendChild(el('b', money(x.amount)));
       row.appendChild(top);
       row.appendChild(flagBox(x.ref, x.description));
-      it.appendChild(row);
+      box.appendChild(row);
     });
+  }
 
+  function jobCard(j, open) {
+    var done = j.status === 'Completed';
+    var det = el('details', null, 'job');
+    det.open = open;
+    var sum = el('summary');
+    sum.appendChild(el('b', j.name));
+    sum.appendChild(el('span', done ? 'Completed' : (j.stage || 'In progress'), 'stage' + (done ? ' done' : '')));
+    det.appendChild(sum);
+
+    var body = el('div', null, 'jobbody');
+    if (j.next && !done) body.appendChild(el('p', 'Next step: ' + j.next, 'muted'));
+    if (j.updated) body.appendChild(el('p', 'Last updated ' + fmtDay(j.updated), 'muted'));
+    var grid = el('div', null, 'grid');
+    [['Costs so far', j.summary.costs], ['Invoiced', j.summary.invoiced], ['Paid', j.summary.paid], ['Still due', j.summary.unpaid]].forEach(function (s) {
+      var st = el('div', null, 'stat');
+      st.appendChild(el('b', money(s[1])));
+      st.appendChild(el('span', s[0]));
+      grid.appendChild(st);
+    });
+    body.appendChild(grid);
+
+    body.appendChild(el('h3', 'Invoices'));
+    var ib = el('div'); listInvoices(ib, j.invoices); body.appendChild(ib);
+    body.appendChild(el('h3', 'Project updates'));
+    var ub = el('div'); listUpdates(ub, j.updates); body.appendChild(ub);
+    body.appendChild(el('h3', 'Costs and line items'));
+    var lb = el('div'); listItems(lb, j.items); body.appendChild(lb);
+    det.appendChild(body);
+    return det;
+  }
+
+  function render(d) {
+    $('login').hidden = true;
+    $('app').hidden = false;
+    $('hello').textContent = 'Hello, ' + d.name;
+    $('sCosts').textContent = money(d.summary.costs);
+    $('sInv').textContent = money(d.summary.invoiced);
+    $('sPaid').textContent = money(d.summary.paid);
+    $('sUnpaid').textContent = money(d.summary.unpaid);
+
+    var jobs = d.jobs || [];
+    var active = jobs.filter(function (j) { return j.status !== 'Completed'; });
+    var finished = jobs.filter(function (j) { return j.status === 'Completed'; });
+    var boxA = $('jobsActive'); boxA.innerHTML = '';
+    var boxD = $('jobsDone'); boxD.innerHTML = '';
+    active.forEach(function (j) { boxA.appendChild(jobCard(j, active.length === 1)); });
+    finished.forEach(function (j) { boxD.appendChild(jobCard(j, false)); });
+    if (!active.length) boxA.appendChild(el('p', 'No jobs in progress right now.', 'muted'));
+    $('doneWrap').hidden = !finished.length;
     var ms = $('messages'); ms.innerHTML = '';
     if (!d.messages.length) ms.appendChild(el('p', 'No messages yet.', 'muted'));
     d.messages.forEach(function (m) {
