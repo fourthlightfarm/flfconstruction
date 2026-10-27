@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>FLFC Office</title>
+  <style>
+    :root { --brown:#3e2c1f; --green:#5f7452; --sage:#b8c5a8; --tan:#e8e3d5; --cream:#f5f2ea; --ink:#2b2423; --muted:#6b6359; --line:#d9d2c0; --red:#a33a2b; --ok:#2f5a2b; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:'Segoe UI',Tahoma,Arial,sans-serif; background:var(--cream); color:var(--ink); font-size:15px; }
+    main { max-width:980px; margin:0 auto; padding:16px 14px 60px; }
+    h1 { font-size:22px; margin:0; color:var(--brown); }
+    h2 { font-size:17px; margin:0 0 10px; color:var(--brown); }
+    h3 { font-size:14px; margin:18px 0 6px; color:var(--brown); text-transform:uppercase; letter-spacing:.05em; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:8px; padding:14px; margin-top:14px; }
+    label { display:block; font-size:13px; font-weight:600; margin:10px 0 4px; color:var(--brown); }
+    input, select, textarea { width:100%; font:inherit; font-size:15px; padding:8px 9px; border:1px solid #b9b2a2; border-radius:6px; background:#fff; color:var(--ink); min-width:0; }
+    input[type=checkbox] { width:auto; }
+    textarea { min-height:70px; resize:vertical; }
+    button { font:inherit; font-weight:600; border:0; border-radius:6px; cursor:pointer; background:var(--brown); color:#fff; padding:8px 14px; min-height:38px; }
+    button.alt { background:transparent; color:var(--brown); border:1.5px solid var(--brown); }
+    button.go { background:var(--green); }
+    button.danger { background:var(--red); }
+    button.small { min-height:30px; padding:4px 10px; font-size:13px; }
+    button:disabled { opacity:.5; cursor:default; }
+    .bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .bar select { flex:1 1 220px; width:auto; font-weight:600; }
+    .muted { color:var(--muted); font-size:13px; }
+    .banner { margin-top:12px; padding:10px 12px; border-radius:6px; font-weight:600; }
+    .banner.ok { background:#e3f0e1; color:var(--ok); }
+    .banner.err { background:#f7e2de; color:var(--red); }
+    .grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; }
+    .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:8px; margin:10px 0 4px; }
+    .stat { background:var(--tan); border-radius:6px; padding:8px; text-align:center; }
+    .stat b { display:block; font-size:16px; color:var(--brown); }
+    .stat span { font-size:12px; color:var(--muted); }
+    details.job { border:1px solid var(--line); border-radius:8px; margin-top:12px; background:#fff; }
+    details.job > summary { cursor:pointer; padding:12px 14px; display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; list-style:none; }
+    details.job > summary::-webkit-details-marker { display:none; }
+    details.job > summary b { font-size:16px; color:var(--brown); }
+    .pill { display:inline-block; padding:2px 10px; border-radius:12px; font-size:12px; font-weight:700; background:var(--sage); color:var(--brown); }
+    .pill.done { background:var(--tan); }
+    .jobbody { padding:0 14px 14px; }
+    .line { display:grid; gap:6px; align-items:center; padding:8px 0; border-bottom:1px solid #eee; }
+    .line.li { grid-template-columns:1.1fr 2fr .9fr .8fr auto auto; }
+    .line.iv { grid-template-columns:.9fr .8fr .8fr 1.6fr 1.4fr auto auto; }
+    .line.up { grid-template-columns:1.4fr 2.4fr auto auto; }
+    @media (max-width:760px) { .line.li, .line.iv, .line.up { grid-template-columns:1fr 1fr; } }
+    .show { display:flex; align-items:center; gap:5px; font-size:12px; color:var(--muted); margin:0; font-weight:400; white-space:nowrap; }
+    .saved { outline:2px solid var(--green); }
+    .msg { padding:10px 0; border-bottom:1px solid #eee; }
+    .copybox { background:var(--cream); border:1px solid var(--line); border-radius:6px; padding:10px; margin-top:6px; white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; }
+    [hidden] { display:none !important; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>FLFC Office</h1>
+  <p class="muted" style="margin:2px 0 0">Private. Customers, jobs, line items, invoices and messages for the customer portal.</p>
+  <div id="banner" class="banner" hidden></div>
+
+  <section id="login" class="card">
+    <h2>Sign in</h2>
+    <form id="loginForm" autocomplete="off">
+      <label for="key">Admin key</label>
+      <input id="key" type="password" autocomplete="off" placeholder="Paste your admin key">
+      <label class="show" style="margin-top:10px"><input id="remember" type="checkbox"> Remember on this device</label>
+      <button type="submit" class="go" style="margin-top:12px;width:100%">Open the office</button>
+    </form>
+  </section>
+
+  <div id="app" hidden>
+    <div class="card bar">
+      <select id="cust" aria-label="Customer"></select>
+      <button id="btnNew" class="go">New customer</button>
+      <button id="btnMsgs" class="alt">Messages <span id="msgCount"></span></button>
+      <button id="btnOut" class="alt">Sign out</button>
+    </div>
+
+    <section id="newCard" class="card" hidden>
+      <h2>New customer</h2>
+      <form id="newForm" autocomplete="off">
+        <div class="grid2">
+          <div><label for="nName">Customer name <span class="muted">(they sign in with this)</span></label><input id="nName" maxlength="80"></div>
+          <div><label for="nPhone">Phone number</label><input id="nPhone" maxlength="30"></div>
+          <div><label for="nEmail">Email</label><input id="nEmail" maxlength="120"></div>
+          <div><label for="nAddr">Address</label><input id="nAddr" maxlength="160"></div>
+          <div><label for="nJob">First job <span class="muted">(optional)</span></label><input id="nJob" maxlength="80"></div>
+          <div><label for="nPin">Portal PIN <span class="muted">(you choose it)</span></label>
+            <div class="bar" style="flex-wrap:nowrap"><input id="nPin" inputmode="numeric" maxlength="6" placeholder="6 digits"><button type="button" class="alt small" id="nRand">Random</button></div></div>
+        </div>
+        <div class="bar" style="margin-top:12px"><button type="submit" class="go">Add customer</button><button type="button" class="alt" id="nCancel">Cancel</button></div>
+      </form>
+      <div id="sendBox" hidden>
+        <h3>Send to the customer</h3>
+        <div class="copybox" id="welcome"></div>
+        <button class="alt small" id="copyWelcome" style="margin-top:6px">Copy welcome message</button>
+        <div class="copybox" id="pinMsg"></div>
+        <button class="alt small" id="copyPin" style="margin-top:6px">Copy PIN message (send separately)</button>
+      </div>
+    </section>
+
+    <section id="msgsCard" class="card" hidden>
+      <h2>Messages from customers</h2>
+      <div id="msgs"></div>
+    </section>
+
+    <div id="custView"></div>
+  </div>
+</main>
+
+<script>
+  var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwIpw5AZRQRBiFH3PYEdqzyKQlK5oIWLYQBtKc16IDFqXxhHheYxkjRCMt2pLC8Ip0Q/exec';
+  var key = '';
+  var cur = null;
+  var openJobs = {};
+
+  function $(id) { return document.getElementById(id); }
+  function el(tag, text, cls) { var e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; }
+  function money(n) { return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function r2(n) { return Math.round(n * 100) / 100; }
+  function banner(msg, kind) {
+    var b = $('banner');
+    if (!msg) { b.hidden = true; return; }
+    b.textContent = msg; b.className = 'banner ' + (kind === 'ok' ? 'ok' : 'err'); b.hidden = false;
+  }
+  function call(op, data) {
+    var p = { action: 'admin', key: key, op: op };
+    for (var k in (data || {})) p[k] = data[k];
+    return fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(p) })
+      .then(function (r) { return r.json(); })
+      .catch(function () { return { ok: false, error: 'Could not reach the server. Check your signal and try again.' }; });
+  }
+  function randomPin() {
+    var a = new Uint32Array(1); crypto.getRandomValues(a);
+    return String(100000 + (a[0] % 900000));
+  }
+  function copyText(text, btn) {
+    var done = function () { var t = btn.textContent; btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = t; }, 1500); };
+    try { navigator.clipboard.writeText(text).then(done, function () { banner('Select the text and press Ctrl+C.', 'err'); }); }
+    catch (e) { banner('Select the text and press Ctrl+C.', 'err'); }
+  }
+  function safeStore(set, v) {
+    try { if (set) { if (v) localStorage.setItem('flfc_office_key', v); else localStorage.removeItem('flfc_office_key'); } else return localStorage.getItem('flfc_office_key') || ''; } catch (e) { return ''; }
+    return '';
+  }
+
+  // ---------- sign in ----------
+  function signIn(k, remember) {
+    key = k;
+    banner('');
+    return call('getCustomers').then(function (d) {
+      if (!d.ok) { key = ''; banner(d.error || 'Could not sign in.', 'err'); return; }
+      safeStore(true, remember ? k : '');
+      $('login').hidden = true; $('app').hidden = false;
+      fillCustomers(d, cur ? cur.customer.id : '');
+      if ($('cust').value) loadCustomer($('cust').value);
+    });
+  }
+  $('loginForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var k = $('key').value.trim();
+    if (!k) { banner('Paste your admin key first.', 'err'); return; }
+    signIn(k, $('remember').checked);
+  });
+  $('btnOut').addEventListener('click', function () {
+    key = ''; cur = null; safeStore(true, '');
+    $('app').hidden = true; $('login').hidden = false; $('key').value = ''; $('custView').innerHTML = ''; banner('');
+  });
+
+  function fillCustomers(d, selectId) {
+    var s = $('cust'); s.innerHTML = '';
+    d.customers.forEach(function (c) {
+      var o = el('option', c.name + (c.active ? '' : ' (inactive)')); o.value = c.id; s.appendChild(o);
+    });
+    if (selectId) s.value = selectId;
+    $('msgCount').textContent = d.newMessages ? '(' + d.newMessages + ')' : '';
+    if (!d.customers.length) $('custView').innerHTML = '<p class="muted" style="margin-top:14px">No customers yet. Use New customer.</p>';
+  }
+  function refreshList(selectId) {
+    return call('getCustomers').then(function (d) { if (d.ok) fillCustomers(d, selectId || $('cust').value); });
+  }
+  $('cust').addEventListener('change', function () { loadCustomer(this.value); });
+
+  // ---------- new customer ----------
+  $('btnNew').addEventListener('click', function () {
+    $('newCard').hidden = !$('newCard').hidden; $('sendBox').hidden = true;
+    if (!$('newCard').hidden) { $('nPin').value = ''; $('nName').focus(); }
+  });
+  $('nCancel').addEventListener('click', function () { $('newCard').hidden = true; });
+  $('nRand').addEventListener('click', function () { $('nPin').value = randomPin(); });
+  $('nPin').addEventListener('input', function () { this.value = this.value.replace(/\D/g, '').substring(0, 6); });
+  $('newForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var name = $('nName').value.trim(), pin = $('nPin').value.trim();
+    if (!name) { banner('Enter the customer name.', 'err'); return; }
+    if (!/^\d{6}$/.test(pin)) { banner('The PIN must be exactly 6 digits.', 'err'); return; }
+    banner('Adding…', 'ok');
+    call('addCustomer', { name: name, pin: pin, phone: $('nPhone').value, email: $('nEmail').value, address: $('nAddr').value, job: $('nJob').value }).then(function (d) {
+      if (!d.ok) { banner(d.error, 'err'); return; }
+      banner('Added ' + name + '.', 'ok');
+      var first = name.split(' ')[0];
+      $('welcome').textContent = 'Hi ' + first + ', you can follow your project online at flfconstruction.com. Click "Customer Portal" at the top of the page, then enter your name exactly as "' + name + '" and your 6-digit PIN. You will see your jobs, costs, invoices and updates, and you can ask us questions right there. I will send your PIN in a separate message. - Fourth Light Farm Construction';
+      $('pinMsg').textContent = 'Your Customer Portal PIN: ' + pin;
+      $('sendBox').hidden = false;
+      ['nName', 'nPhone', 'nEmail', 'nAddr', 'nJob', 'nPin'].forEach(function (i) { $(i).value = ''; });
+      refreshList(d.id).then(function () { loadCustomer(d.id); });
+    });
+  });
+  $('copyWelcome').addEventListener('click', function () { copyText($('welcome').textContent, this); });
+  $('copyPin').addEventListener('click', function () { copyText($('pinMsg').textContent, this); });
+
+  // ---------- messages ----------
+  $('btnMsgs').addEventListener('click', function () {
+    var card = $('msgsCard');
+    card.hidden = !card.hidden;
+    if (!card.hidden) loadMessages();
+  });
+  function loadMessages() {
+    call('listMessages', { newOnly: true }).then(function (d) {
+      var box = $('msgs'); box.innerHTML = '';
+      if (!d.ok) { banner(d.error, 'err'); return; }
+      if (!d.messages.length) box.appendChild(el('p', 'No new messages.', 'muted'));
+      d.messages.forEach(function (m) {
+        var row = el('div', null, 'msg');
+        row.appendChild(el('b', m.customer + ' - ' + m.type + ' - ' + m.date));
+        if (m.about) row.appendChild(el('div', m.about, 'muted'));
+        row.appendChild(el('p', m.text));
+        var ta = el('textarea'); ta.placeholder = 'Your reply'; ta.maxLength = 1000; row.appendChild(ta);
+        var b = el('button', 'Send reply', 'small go'); b.style.marginTop = '6px';
+        b.addEventListener('click', function () {
+          if (!ta.value.trim()) { banner('Type a reply first.', 'err'); return; }
+          call('replyMessage', { row: m.row, reply: ta.value.trim() }).then(function (r) {
+            if (!r.ok) { banner(r.error, 'err'); return; }
+            banner('Reply saved. The customer will see it in their portal.', 'ok'); loadMessages(); refreshList();
+          });
+        });
+        row.appendChild(b);
+        box.appendChild(row);
+      });
+    });
+  }
+
+  // ---------- customer view ----------
+  function loadCustomer(id) {
+    var y = window.scrollY;
+    return call('getCustomer', { id: id }).then(function (d) {
+      if (!d.ok) { banner(d.error, 'err'); return; }
+      cur = d;
+      render();
+      window.scrollTo(0, y);
+    });
+  }
+  function reload() { return loadCustomer(cur.customer.id); }
+
+  // Saves one field on change; on success flashes the box and runs onOk (no re-render).
+  function saver(input, getValue, send, onOk) {
+    input.addEventListener('change', function () {
+      var v = getValue();
+      send(v).then(function (d) {
+        if (!d.ok) { banner(d.error || 'Could not save.', 'err'); return; }
+        banner('');
+        input.classList.add('saved'); setTimeout(function () { input.classList.remove('saved'); }, 900);
+        if (onOk) onOk(v);
+      });
+    });
+    return input;
+  }
+  function rowField(tab, obj, field, type, extra) {
+    var inp;
+    if (type === 'select') {
+      inp = el('select');
+      extra.options.forEach(function (o) { var op = el('option', o); inp.appendChild(op); });
+      inp.value = obj[field];
+    } else {
+      inp = el('input');
+      inp.value = type === 'number' ? obj[field] : obj[field];
+      if (type === 'number') { inp.type = 'number'; inp.step = '0.01'; }
+      if (extra && extra.placeholder) inp.placeholder = extra.placeholder;
+    }
+    return saver(inp, function () { return type === 'number' ? inp.value : inp.value; },
+      function (v) { var f = {}; f[field] = v; return call('setRow', { tab: tab, row: obj.row, id: cur.customer.id, fields: f }); },
+      function (v) { obj[field] = type === 'number' ? Number(v) : v; updateTotals(obj.job); });
+  }
+  function showBox(tab, obj) {
+    var lab = el('label', null, 'show');
+    var cb = el('input'); cb.type = 'checkbox'; cb.checked = obj.visible;
+    lab.appendChild(cb); lab.appendChild(document.createTextNode('Show to customer'));
+    saver(cb, function () { return cb.checked; },
+      function (v) { return call('setRow', { tab: tab, row: obj.row, id: cur.customer.id, fields: { visible: v } }); },
+      function (v) { obj.visible = v; updateTotals(obj.job); });
+    return lab;
+  }
+  function delBtn(tab, obj, what) {
+    var b = el('button', 'Delete', 'danger small');
+    var armed = false;
+    b.addEventListener('click', function () {
+      if (!armed) { armed = true; b.textContent = 'Sure?'; setTimeout(function () { armed = false; b.textContent = 'Delete'; }, 3000); return; }
+      call('deleteRow', { tab: tab, row: obj.row, id: cur.customer.id }).then(function (d) {
+        if (!d.ok) { banner(d.error, 'err'); return; }
+        banner(what + ' deleted.', 'ok'); reload();
+      });
+    });
+    return b;
+  }
+
+  var totalEls = {};
+  function totalsFor(jobId) {
+    var t = { costs: 0, invoiced: 0, paid: 0 };
+    cur.items.forEach(function (i) { if (i.job === jobId && i.visible) t.costs += i.amount; });
+    cur.invoices.forEach(function (i) { if (i.job === jobId && i.visible) { t.invoiced += i.amount; if (i.status === 'Paid') t.paid += i.amount; } });
+    t.due = t.invoiced - t.paid;
+    return t;
+  }
+  function updateTotals(jobId) {
+    var e = totalEls[jobId]; if (!e) return;
+    var t = totalsFor(jobId);
+    e.costs.textContent = money(r2(t.costs)); e.inv.textContent = money(r2(t.invoiced)); e.paid.textContent = money(r2(t.paid)); e.due.textContent = money(r2(t.due));
+    if (e.head) e.head.textContent = 'Due ' + money(r2(t.due));
+  }
+
+  function render() {
+    var c = cur.customer;
+    var root = $('custView'); root.innerHTML = ''; totalEls = {};
+
+    // customer card
+    var card = el('section', null, 'card');
+    var head = el('div', null, 'bar');
+    var nm = el('h2', c.name); nm.style.margin = '0'; nm.style.flex = '1 1 auto';
+    head.appendChild(nm);
+    head.appendChild(el('span', c.active ? 'Active' : 'Inactive', 'pill' + (c.active ? '' : ' done')));
+    card.appendChild(head);
+    var info = el('div', null, 'grid2');
+    function fld(label, value, field, opts) {
+      var w = el('div'); w.appendChild(el('label', label));
+      var inp = el('input'); inp.value = value; if (opts && opts.maxLength) inp.maxLength = opts.maxLength;
+      if (opts && opts.digits) inp.addEventListener('input', function () { inp.value = inp.value.replace(/\D/g, '').substring(0, 6); });
+      saver(inp, function () { return inp.value; }, function (v) { var f = {}; f.id = c.id; f[field] = v; return call('updateCustomer', f); }, function (v) { c[field] = v; if (field === 'name') { nm.textContent = v; refreshList(c.id); } });
+      w.appendChild(inp); info.appendChild(w);
+    }
+    fld('Name (customers sign in with this)', c.name, 'name', { maxLength: 80 });
+    fld('Phone', c.phone, 'phone', { maxLength: 30 });
+    fld('Email', c.email, 'email', { maxLength: 120 });
+    fld('Address', c.address, 'address', { maxLength: 160 });
+    fld('Portal PIN (6 digits)', c.pin, 'pin', { digits: true, maxLength: 6 });
+    card.appendChild(info);
+    var ab = el('div', null, 'bar'); ab.style.marginTop = '10px';
+    var act = el('button', c.active ? 'Deactivate portal login' : 'Reactivate portal login', 'alt small');
+    act.addEventListener('click', function () { call('updateCustomer', { id: c.id, active: !c.active }).then(function (d) { if (!d.ok) { banner(d.error, 'err'); return; } refreshList(c.id); reload(); }); });
+    ab.appendChild(act);
+    ab.appendChild(el('span', 'Portal link: flfconstruction.com, Customer Portal button. Last updated ' + c.updated, 'muted'));
+    card.appendChild(ab);
+    root.appendChild(card);
+
+    // jobs
+    var jobs = cur.jobs.filter(function (j) { return j.status !== 'Completed'; }).concat(cur.jobs.filter(function (j) { return j.status === 'Completed'; }));
+    jobs.forEach(function (j) { root.appendChild(jobPanel(j)); });
+
+    // add job
+    var aj = el('section', null, 'card');
+    aj.appendChild(el('h2', 'Add a job'));
+    var jf = el('div', null, 'bar');
+    var jn = el('input'); jn.placeholder = 'Job name'; jn.style.flex = '2 1 220px'; jn.maxLength = 80;
+    var js = el('input'); js.placeholder = 'Stage (optional)'; js.style.flex = '1 1 140px';
+    var jb = el('button', 'Add job', 'go');
+    jb.addEventListener('click', function () {
+      if (!jn.value.trim()) { banner('Give the job a name.', 'err'); return; }
+      call('addJob', { id: c.id, name: jn.value, stage: js.value }).then(function (d) {
+        if (!d.ok) { banner(d.error, 'err'); return; }
+        openJobs[d.jobId] = true; banner('Job added.', 'ok'); reload();
+      });
+    });
+    jf.appendChild(jn); jf.appendChild(js); jf.appendChild(jb); aj.appendChild(jf);
+    root.appendChild(aj);
+
+    // danger zone
+    var dz = el('section', null, 'card');
+    dz.appendChild(el('h2', 'Delete this customer'));
+    dz.appendChild(el('p', 'Removes their login, jobs, line items, invoices, updates and messages from the sheet. This cannot be undone from this page. (Stripe invoices are not touched.)', 'muted'));
+    var dw = el('div', null, 'bar');
+    var dc = el('input'); dc.placeholder = 'Type ' + c.name + ' to confirm'; dc.style.flex = '1 1 240px';
+    var db = el('button', 'Delete customer', 'danger'); db.disabled = true;
+    dc.addEventListener('input', function () { db.disabled = dc.value.trim().toLowerCase() !== c.name.trim().toLowerCase(); });
+    db.addEventListener('click', function () {
+      call('deleteCustomer', { id: c.id, confirm: c.id }).then(function (d) {
+        if (!d.ok) { banner(d.error, 'err'); return; }
+        banner(c.name + ' deleted.', 'ok'); cur = null; $('custView').innerHTML = '';
+        call('getCustomers').then(function (l) { if (l.ok) { fillCustomers(l, ''); if ($('cust').value) loadCustomer($('cust').value); } });
+      });
+    });
+    dw.appendChild(dc); dw.appendChild(db); dz.appendChild(dw);
+    root.appendChild(dz);
+  }
+
+  function jobPanel(j) {
+    var done = j.status === 'Completed';
+    var det = el('details', null, 'job');
+    det.open = openJobs[j.id] !== undefined ? openJobs[j.id] : !done;
+    det.addEventListener('toggle', function () { openJobs[j.id] = det.open; });
+    var sum = el('summary');
+    sum.appendChild(el('b', j.name));
+    sum.appendChild(el('span', done ? 'Completed' : (j.stage || 'In progress'), 'pill' + (done ? ' done' : '')));
+    if (!j.visible) sum.appendChild(el('span', 'Hidden from customer', 'pill done'));
+    var dueHead = el('span', '', 'muted'); sum.appendChild(dueHead);
+    det.appendChild(sum);
+
+    var body = el('div', null, 'jobbody');
+    // status, stage, next
+    var top = el('div', null, 'grid2');
+    function jf(label, val, field, max) {
+      var w = el('div'); w.appendChild(el('label', label));
+      var inp = el('input'); inp.value = val; inp.maxLength = max;
+      saver(inp, function () { return inp.value; }, function (v) { var f = { id: cur.customer.id, jobId: j.id }; f[field] = v; return call('setJob', f); }, function (v) { j[field] = v; });
+      w.appendChild(inp); top.appendChild(w);
+    }
+    jf('Job name', j.name, 'name', 80);
+    jf('Stage', j.stage, 'stage', 60);
+    jf('Next step', j.next, 'next', 200);
+    body.appendChild(top);
+    var jb = el('div', null, 'bar'); jb.style.marginTop = '10px';
+    var st = el('button', done ? 'Reopen job' : 'Mark job completed', done ? 'alt small' : 'go small');
+    st.addEventListener('click', function () { call('setJob', { id: cur.customer.id, jobId: j.id, status: done ? 'In progress' : 'Completed' }).then(function (d) { if (!d.ok) { banner(d.error, 'err'); return; } openJobs[j.id] = !done; reload(); }); });
+    jb.appendChild(st);
+    var vis = el('label', null, 'show'); var vcb = el('input'); vcb.type = 'checkbox'; vcb.checked = j.visible;
+    vis.appendChild(vcb); vis.appendChild(document.createTextNode('Show this job to the customer'));
+    saver(vcb, function () { return vcb.checked; }, function (v) { return call('setJob', { id: cur.customer.id, jobId: j.id, visible: v }); }, function (v) { j.visible = v; });
+    jb.appendChild(vis); body.appendChild(jb);
+
+    var stats = el('div', null, 'stats');
+    var te = {};
+    [['costs', 'Costs so far'], ['inv', 'Invoiced'], ['paid', 'Paid'], ['due', 'Still due']].forEach(function (p) {
+      var s = el('div', null, 'stat'); var b = el('b', '$0.00'); s.appendChild(b); s.appendChild(el('span', p[1])); stats.appendChild(s); te[p[0]] = b;
+    });
+    te.head = dueHead; totalEls[j.id] = te;
+    body.appendChild(stats);
+
+    // line items
+    body.appendChild(el('h3', 'Line items'));
+    cur.items.filter(function (i) { return i.job === j.id; }).forEach(function (i) {
+      var r = el('div', null, 'line li');
+      r.appendChild(rowField('LineItems', i, 'category', 'text', { placeholder: 'Category' }));
+      r.appendChild(rowField('LineItems', i, 'description', 'text', { placeholder: 'Description' }));
+      r.appendChild(rowField('LineItems', i, 'type', 'select', { options: ['Original', 'Change order', 'Added'] }));
+      r.appendChild(rowField('LineItems', i, 'amount', 'number'));
+      r.appendChild(showBox('LineItems', i)); r.appendChild(delBtn('LineItems', i, 'Line item'));
+      body.appendChild(r);
+    });
+    var al = el('div', null, 'line li');
+    var lc = el('input'); lc.placeholder = 'Category'; var ld = el('input'); ld.placeholder = 'Description';
+    var lt = el('select'); ['Original', 'Change order', 'Added'].forEach(function (o) { lt.appendChild(el('option', o)); });
+    var la = el('input'); la.type = 'number'; la.step = '0.01'; la.placeholder = 'Amount';
+    var lbtn = el('button', 'Add line item', 'go small');
+    lbtn.addEventListener('click', function () {
+      if (!ld.value.trim() && !lc.value.trim()) { banner('Enter a category or description.', 'err'); return; }
+      call('addLineItem', { id: cur.customer.id, jobId: j.id, category: lc.value, description: ld.value, type: lt.value, amount: la.value }).then(function (d) { if (!d.ok) { banner(d.error, 'err'); return; } openJobs[j.id] = true; reload(); });
+    });
+    [lc, ld, lt, la, lbtn].forEach(function (x) { al.appendChild(x); });
+    body.appendChild(al);
+
+    // invoices
+    body.appendChild(el('h3', 'Invoices'));
+    cur.invoices.filter(function (i) { return i.job === j.id; }).forEach(function (i) {
+      var r = el('div', null, 'line iv');
+      r.appendChild(rowField('Invoices', i, 'number', 'text', { placeholder: 'Invoice #' }));
+      r.appendChild(rowField('Invoices', i, 'amount', 'number'));
+      r.appendChild(rowField('Invoices', i, 'status', 'select', { options: ['Not paid', 'Pending', 'Paid'] }));
+      r.appendChild(rowField('Invoices', i, 'link', 'text', { placeholder: 'Pay link (https://…)' }));
+      r.appendChild(rowField('Invoices', i, 'note', 'text', { placeholder: 'Note' }));
+      r.appendChild(showBox('Invoices', i)); r.appendChild(delBtn('Invoices', i, 'Invoice'));
+      body.appendChild(r);
+    });
+    var ai = el('div', null, 'line iv');
+    var inn = el('input'); inn.placeholder = 'Invoice #'; var ia = el('input'); ia.type = 'number'; ia.step = '0.01'; ia.placeholder = 'Amount';
+    var is = el('select'); ['Not paid', 'Pending', 'Paid'].forEach(function (o) { is.appendChild(el('option', o)); });
+    var il = el('input'); il.placeholder = 'Pay link (https://…)'; var ino = el('input'); ino.placeholder = 'Note';
+    var ibtn = el('button', 'Add invoice', 'go small');
+    ibtn.addEventListener('click', function () {
+      if (!inn.value.trim()) { banner('Enter the invoice number.', 'err'); return; }
+      if (!(Number(ia.value) > 0)) { banner('Enter the invoice amount.', 'err'); return; }
+      call('addInvoice', { id: cur.customer.id, jobId: j.id, number: inn.value, amount: ia.value, status: is.value, link: il.value, note: ino.value }).then(function (d) { if (!d.ok) { banner(d.error, 'err'); return; } openJobs[j.id] = true; reload(); });
+    });
+    [inn, ia, is, il, ino, ibtn].forEach(function (x) { ai.appendChild(x); });
+    body.appendChild(ai);
+
+    // updates
+    body.appendChild(el('h3', 'Project updates'));
+    cur.updates.filter(function (u) { return u.job === j.id; }).forEach(function (u) {
+      var r = el('div', null, 'line up');
+      r.appendChild(rowField('Updates', u, 'title', 'text', { placeholder: 'Title' }));
+      r.appendChild(rowField('Updates', u, 'details', 'text', { placeholder: 'Details' }));
+      r.appendChild(showBox('Updates', u)); r.appendChild(delBtn('Updates', u, 'Update'));
+      body.appendChild(r);
+    });
+    var au = el('div', null, 'line up');
+    var ut = el('input'); ut.placeholder = 'Title'; var ud = el('input'); ud.placeholder = 'Details';
+    var ubtn = el('button', 'Add update', 'go small');
+    ubtn.addEventListener('click', function () {
+      if (!ut.value.trim()) { banner('Enter an update title.', 'err'); return; }
+      call('addUpdate', { id: cur.customer.id, jobId: j.id, title: ut.value, details: ud.value }).then(function (d) { if (!d.ok) { banner(d.error, 'err'); return; } openJobs[j.id] = true; reload(); });
+    });
+    [ut, ud, ubtn].forEach(function (x) { au.appendChild(x); });
+    body.appendChild(au);
+
+    det.appendChild(body);
+    setTimeout(function () { updateTotals(j.id); }, 0);
+    return det;
+  }
+
+  (function init() {
+    var saved = safeStore(false);
+    if (saved) { $('key').value = saved; $('remember').checked = true; signIn(saved, true); }
+  })();
+</script>
+</body>
+</html>
