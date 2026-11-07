@@ -320,6 +320,92 @@
     if (e.head) e.head.textContent = 'Due ' + money(r2(t.due));
   }
 
+  // Emails the customer their portal login (optional), the invoice and the Stripe pay link.
+  // It is sent from the business Google account that owns the script, with a copy to you.
+  function invoiceMailCard() {
+    var c = cur.customer;
+    var det = el('details', null, 'job');
+    var sum = el('summary'); sum.appendChild(el('b', 'Send invoice email'));
+    sum.appendChild(el('span', c.email ? 'to ' + c.email : 'add an email above first', 'muted'));
+    det.appendChild(sum);
+    var body = el('div', null, 'jobbody');
+    var g = el('div', null, 'grid2');
+    function field(label, node) { var w = el('div'); w.appendChild(el('label', label)); w.appendChild(node); g.appendChild(w); return node; }
+    var jobSel = el('select');
+    var jobs = cur.jobs.filter(function (j) { return j.status !== 'Completed'; }).concat(cur.jobs.filter(function (j) { return j.status === 'Completed'; }));
+    jobs.forEach(function (j) { var o = el('option', j.name + (j.status === 'Completed' ? ' (completed)' : '')); o.value = j.id; jobSel.appendChild(o); });
+    if (!jobs.length) jobSel.appendChild(el('option', 'No jobs yet'));
+    field('Job', jobSel);
+    var total = el('input'); total.type = 'number'; total.step = '0.01'; total.min = '0'; total.inputMode = 'decimal'; total.placeholder = '2199.92';
+    field('Total due ($)', total);
+    var link = el('input'); link.placeholder = 'https://invoice.stripe.com/...'; link.maxLength = 500;
+    field('Stripe pay link', link);
+    var num = el('input'); num.placeholder = 'e.g. NHLATOKW-0002'; num.maxLength = 40;
+    field('Invoice # (optional)', num);
+    var due = el('input'); due.type = 'date';
+    field('Due date (optional)', due);
+    body.appendChild(g);
+    var opts = el('div'); opts.style.marginTop = '10px';
+    function check(label, on) {
+      var l = el('label', null, 'show'); l.style.fontSize = '13px'; l.style.marginTop = '6px';
+      var cb = el('input'); cb.type = 'checkbox'; cb.checked = on; l.appendChild(cb); l.appendChild(document.createTextNode(' ' + label));
+      opts.appendChild(l); return cb;
+    }
+    var welcome = check('Include the portal welcome and PIN', true);
+    var review = check('Include the Google review line', true);
+    var updated = check('Say this is an updated invoice (the old link no longer works)', false);
+    var toPortal = check('Also list it in the customer’s portal invoices (Not paid, with the pay link)', true);
+    body.appendChild(opts);
+    var bar = el('div', null, 'bar'); bar.style.marginTop = '12px';
+    var pv = el('button', 'Send me a preview', 'alt');
+    var send = el('button', 'Send to customer', 'go');
+    bar.appendChild(pv); bar.appendChild(send);
+    body.appendChild(bar);
+    body.appendChild(el('p', 'The preview goes to your own address only. The real email goes to the customer with a copy to you, and replies come back to you.', 'muted'));
+
+    function payload(isPreview) {
+      return {
+        id: c.id, jobId: jobSel.value, total: total.value, payLink: link.value.trim(), number: num.value.trim(), due: due.value,
+        includeWelcome: welcome.checked, includeReview: review.checked, updated: updated.checked, addToPortal: toPortal.checked,
+        preview: isPreview, confirmSend: !isPreview
+      };
+    }
+    function check_() {
+      if (!(Number(total.value) > 0)) { banner('Enter the total due.', 'err'); return false; }
+      if (!/^https:\/\/(invoice|pay|buy|checkout)\.stripe\.com\//.test(link.value.trim())) { banner('Paste the Stripe pay link (it starts with https://invoice.stripe.com/).', 'err'); return false; }
+      return true;
+    }
+    pv.addEventListener('click', function () {
+      if (!check_()) return;
+      pv.disabled = true; banner('Sending preview…', 'ok');
+      call('sendInvoiceEmail', payload(true)).then(function (d) {
+        pv.disabled = false;
+        if (!d.ok) { banner(d.error, 'err'); return; }
+        banner('Preview sent to ' + d.sentTo + '. Check your inbox.', 'ok');
+      });
+    });
+    var armed = false, armTimer = null;
+    function disarm() { armed = false; clearTimeout(armTimer); send.textContent = 'Send to customer'; send.classList.remove('danger'); send.classList.add('go'); }
+    [jobSel, total, link, num, due, welcome, review, updated, toPortal].forEach(function (x) { x.addEventListener('change', disarm); });
+    send.addEventListener('click', function () {
+      if (!c.email) { banner('This customer has no email on file. Add it above first.', 'err'); return; }
+      if (!check_()) return;
+      if (!armed) {
+        armed = true; send.textContent = 'Tap again to send to ' + c.email; send.classList.remove('go'); send.classList.add('danger');
+        armTimer = setTimeout(disarm, 6000); return;
+      }
+      disarm(); send.disabled = true; banner('Sending…', 'ok');
+      call('sendInvoiceEmail', payload(false)).then(function (d) {
+        send.disabled = false;
+        if (!d.ok) { banner(d.error, 'err'); return; }
+        banner('Invoice email sent to ' + d.sentTo + (d.portalAdded ? ' and added to their portal.' : '.'), 'ok');
+        if (d.portalAdded) { openJobs[jobSel.value] = true; reload(); }
+      });
+    });
+    det.appendChild(body);
+    return det;
+  }
+
   function render() {
     var c = cur.customer;
     var root = $('custView'); root.innerHTML = ''; totalEls = {};
@@ -352,6 +438,7 @@
     ab.appendChild(el('span', 'Portal link: flfconstruction.com, Customer Portal button. Last updated ' + c.updated, 'muted'));
     card.appendChild(ab);
     root.appendChild(card);
+    root.appendChild(invoiceMailCard());
 
     // jobs
     var jobs = cur.jobs.filter(function (j) { return j.status !== 'Completed'; }).concat(cur.jobs.filter(function (j) { return j.status === 'Completed'; }));
