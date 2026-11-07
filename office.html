@@ -51,6 +51,13 @@
     .saved { outline:2px solid var(--green); }
     .msg { padding:10px 0; border-bottom:1px solid #eee; }
     .copybox { background:var(--cream); border:1px solid var(--line); border-radius:6px; padding:10px; margin-top:6px; white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; }
+    .sinv { padding:10px 0; border-bottom:1px solid #eee; }
+    .sinv .bar { margin-top:6px; }
+    .sinv select { flex:0 1 190px; width:auto; padding:4px 8px; font-size:13px; }
+    .logline { display:grid; grid-template-columns:120px 120px 1fr; gap:4px 10px; padding:5px 0; border-bottom:1px solid #f0ece0; font-size:12.5px; }
+    .logline b { color:var(--brown); }
+    @media (max-width:760px) { .logline { grid-template-columns:1fr; } }
+    .pill.warn { background:#f4d9a8; color:#6b3d00; }
     [hidden] { display:none !important; }
   </style>
 </head>
@@ -115,6 +122,8 @@
   var key = '';
   var cur = null;
   var openJobs = {};
+  var openCard = {};   // which collapsible cards stay open across re-renders
+  var syncNote = {};   // last "Check Stripe" result per job
 
   function $(id) { return document.getElementById(id); }
   function el(tag, text, cls) { var e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; }
@@ -133,6 +142,33 @@
       .catch(function () { return { ok: false, error: 'Could not reach the server. Check your signal and try again.' }; });
   }
   var stripeOn = null;
+  var MONTHS3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function shortDate(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || '');
+    return m ? MONTHS3[parseInt(m[2], 10) - 1] + ' ' + parseInt(m[3], 10) : (s || '');
+  }
+  // A message area that sits inside a card, next to the buttons, and also shows at the top.
+  function msgBox() {
+    var node = el('div', null, 'banner'); node.hidden = true;
+    return {
+      node: node,
+      say: function (text, kind) {
+        node.textContent = text || ''; node.className = 'banner ' + (kind === 'ok' ? 'ok' : 'err'); node.hidden = !text;
+        banner(text, kind);
+        if (text && node.scrollIntoView) { try { node.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {} }
+      }
+    };
+  }
+  // Button that needs two taps within 6 seconds before it runs.
+  function twoTap(btn, label, armedLabel, run) {
+    var armed = false, t = null;
+    function off() { armed = false; clearTimeout(t); btn.textContent = label; btn.classList.remove('danger'); btn.classList.add('alt'); }
+    btn.addEventListener('click', function () {
+      if (!armed) { armed = true; btn.textContent = armedLabel; btn.classList.remove('alt'); btn.classList.add('danger'); t = setTimeout(off, 6000); return; }
+      off(); run();
+    });
+    return off;
+  }
   function randomId() {
     var a = new Uint32Array(3); crypto.getRandomValues(a);
     return Array.prototype.map.call(a, function (n) { return n.toString(36); }).join('');
@@ -404,7 +440,7 @@
       return {
         id: c.id, jobId: jobSel.value, total: total.value, payLink: link.value.trim(), number: num.value.trim(), due: due.value,
         includeWelcome: welcome.checked, includeReview: review.checked, updated: updated.checked, addToPortal: toPortal.checked,
-        preview: isPreview, confirmSend: !isPreview
+        preview: isPreview, confirmSend: !isPreview, invoiceId: made ? made.invoiceId : ''
       };
     }
     function check_() {
@@ -433,12 +469,20 @@
     link.addEventListener('input', updateCreate);
     if (stripeOn === null) { call('stripeStatus').then(function (d) { if (d && d.ok) { stripeOn = !!d.connected; updateCreate(); } }); }
     updateCreate();
+    var dupOk = false;
+    function resetDup() { dupOk = false; create.textContent = 'Create Stripe invoice'; create.classList.remove('danger'); create.classList.add('go'); }
+    [jobSel, total, due, line].forEach(function (x) { x.addEventListener('change', resetDup); });
     create.addEventListener('click', function () {
       if (!c.email) { say('This customer has no email on file. Add it above first.', 'err'); return; }
       if (!(Number(total.value) > 0)) { say('Enter the total due.', 'err'); return; }
       create.disabled = true; say('Creating the Stripe invoice…', 'ok');
-      call('createStripeInvoice', { id: c.id, jobId: jobSel.value, total: total.value, due: due.value, lineDescription: line.value, requestId: rid, confirmCreate: true }).then(function (d) {
-        if (!d.ok) { say(d.error, 'err'); updateCreate(); return; }
+      call('createStripeInvoice', { id: c.id, jobId: jobSel.value, total: total.value, due: due.value, lineDescription: line.value, requestId: rid, confirmCreate: true, allowDuplicate: dupOk }).then(function (d) {
+        if (!d.ok) {
+          updateCreate();
+          if (d.duplicate) { dupOk = true; create.textContent = 'Create anyway'; create.classList.remove('go'); create.classList.add('danger'); }
+          say(d.error, 'err'); return;
+        }
+        resetDup();
         made = { invoiceId: d.invoiceId, number: d.number };
         link.value = d.link; num.value = d.number; lockFields(true); updateCreate(); disarm();
         say('Stripe invoice ' + d.number + ' created for ' + money(d.total) + '. It has not been emailed. Preview it, then send.', 'ok');
@@ -449,7 +493,7 @@
       if (!made) return;
       if (!voidArmed) { voidArmed = true; voidBtn.textContent = 'Tap again to void ' + (made.number || 'this invoice'); voidBtn.classList.remove('alt'); voidBtn.classList.add('danger'); voidTimer = setTimeout(disarmVoid, 6000); return; }
       disarmVoid(); voidBtn.disabled = true;
-      call('voidStripeInvoice', { invoiceId: made.invoiceId, confirmVoid: true }).then(function (d) {
+      call('voidStripeInvoice', { id: c.id, invoiceId: made.invoiceId, confirmVoid: true, reason: 'Void and start over' }).then(function (d) {
         voidBtn.disabled = false;
         if (!d.ok) { say(d.error, 'err'); return; }
         say('Invoice ' + (made.number || '') + ' voided in Stripe. Change the amount and create it again.', 'ok');
@@ -475,6 +519,250 @@
       });
     });
     autoTotal();
+    det.appendChild(body);
+    return det;
+  }
+
+  // Every Stripe invoice that looks like this customer's: see if it was emailed, add it to the portal,
+  // void it (even after it was sent), and read the log of what happened.
+  function stripeInvoicesCard() {
+    var c = cur.customer;
+    var det = el('details', null, 'job'); det.open = !!openCard.stripe;
+    var sum = el('summary'); sum.appendChild(el('b', 'Stripe invoices and log'));
+    var sumNote = el('span', 'check, void, and see what happened', 'muted'); sum.appendChild(sumNote);
+    det.appendChild(sum);
+    var body = el('div', null, 'jobbody');
+    var mb = msgBox(), say = mb.say;
+    var bar = el('div', null, 'bar'); bar.style.marginTop = '8px';
+    var refresh = el('button', 'Refresh from Stripe', 'alt small');
+    bar.appendChild(refresh);
+    bar.appendChild(el('span', 'Voiding stops the link the customer already has. Paid invoices cannot be voided.', 'muted'));
+    body.appendChild(bar);
+    var list = el('div'); body.appendChild(list);
+    body.appendChild(mb.node);
+    body.appendChild(el('h3', 'Log'));
+    var logBox = el('div'); body.appendChild(logBox);
+    var loaded = false;
+
+    function jobName(id) {
+      var n = '';
+      cur.jobs.forEach(function (j) { if (j.id === id) n = j.name; });
+      return n;
+    }
+    function loadLog() {
+      call('getLog', { id: c.id, limit: 30 }).then(function (d) {
+        logBox.innerHTML = '';
+        if (!d.ok) { logBox.appendChild(el('p', d.error, 'muted')); return; }
+        if (!d.log.length) logBox.appendChild(el('p', 'Nothing logged yet. Creating, emailing, linking and voiding invoices will show up here.', 'muted'));
+        d.log.forEach(function (x) {
+          var r = el('div', null, 'logline');
+          r.appendChild(el('span', x.time, 'muted'));
+          r.appendChild(el('b', x.action));
+          var what = [x.number, x.amount ? money(x.amount) : '', x.job, x.detail].filter(function (s) { return s; }).join(' · ');
+          r.appendChild(el('span', what));
+          logBox.appendChild(r);
+        });
+      });
+    }
+    var statusWord = { open: 'Open (unpaid)', paid: 'Paid', void: 'Void', uncollectible: 'Uncollectible' };
+    function row(x) {
+      var r = el('div', null, 'sinv');
+      var top = el('div', null, 'bar');
+      top.appendChild(el('b', (x.number || x.id) + ' · ' + money(x.amount)));
+      top.appendChild(el('span', statusWord[x.status] || x.status, 'pill' + (x.status === 'open' ? '' : ' done')));
+      if (x.duplicate) top.appendChild(el('span', 'Possible duplicate', 'pill warn'));
+      if (x.match === 'name') top.appendChild(el('span', 'Matched by first name only. Check it is theirs.', 'muted'));
+      r.appendChild(top);
+      var bits = [];
+      bits.push(x.job ? jobName(x.job) || x.job : 'No job yet');
+      bits.push(x.sent ? 'Emailed ' + shortDate(x.sent) : (x.status === 'open' ? 'Not emailed yet' : ''));
+      bits.push(x.created ? 'created ' + shortDate(x.created) : '');
+      bits.push(x.portal ? 'In portal' + (x.portal.visible ? '' : ' (hidden)') : (x.status === 'void' ? '' : 'Not in portal'));
+      r.appendChild(el('div', bits.filter(function (s) { return s; }).join(' · '), 'muted'));
+      var act = el('div', null, 'bar');
+      if (x.link) {
+        var op = el('button', 'Open', 'alt small');
+        op.addEventListener('click', function () { window.open(x.link, '_blank', 'noopener'); });
+        act.appendChild(op);
+      }
+      if (x.status !== 'void' && !x.portal) {
+        var js = el('select');
+        cur.jobs.forEach(function (j) { var o = el('option', j.name); o.value = j.id; js.appendChild(o); });
+        if (x.job) js.value = x.job;
+        var addp = el('button', 'Add to portal', 'go small');
+        addp.addEventListener('click', function () {
+          addp.disabled = true;
+          call('linkInvoice', { id: c.id, jobId: js.value, invoiceId: x.id }).then(function (d) {
+            addp.disabled = false;
+            if (!d.ok) { say(d.error, 'err'); return; }
+            openCard.stripe = true; openJobs[js.value] = true;
+            syncNote = {}; say(x.number + ' added to the customer’s invoices.', 'ok'); reload();
+          });
+        });
+        if (cur.jobs.length) { act.appendChild(js); act.appendChild(addp); }
+      }
+      if (x.status === 'open' && !x.sent) {
+        var ms = el('button', 'Mark as emailed', 'alt small');
+        ms.addEventListener('click', function () {
+          ms.disabled = true;
+          call('markInvoiceSent', { id: c.id, invoiceId: x.id }).then(function (d) {
+            ms.disabled = false;
+            if (!d.ok) { say(d.error, 'err'); return; }
+            say(x.number + ' marked as emailed.', 'ok'); load();
+          });
+        });
+        act.appendChild(ms);
+      }
+      if (x.status === 'open' || x.status === 'uncollectible') {
+        var vb = el('button', 'Void', 'alt small');
+        twoTap(vb, 'Void', 'Tap again to void ' + (x.number || 'this invoice'), function () {
+          vb.disabled = true;
+          call('voidStripeInvoice', { id: c.id, invoiceId: x.id, confirmVoid: true, reason: 'Voided from the office page' }).then(function (d) {
+            vb.disabled = false;
+            if (!d.ok) { say(d.error, 'err'); return; }
+            openCard.stripe = true;
+            say(d.number + ' (' + money(d.amount) + ') voided' + (d.wasSent ? '. The link the customer already has no longer works.' : '.') + ' It is in the log below.', 'ok');
+            syncNote = {}; reload();
+          });
+        });
+        act.appendChild(vb);
+      }
+      r.appendChild(act);
+      return r;
+    }
+    function load() {
+      list.innerHTML = ''; list.appendChild(el('p', 'Checking Stripe…', 'muted'));
+      call('getStripeInvoices', { id: c.id }).then(function (d) {
+        list.innerHTML = '';
+        if (!d.ok) { list.appendChild(el('p', d.error, 'muted')); sumNote.textContent = 'could not reach Stripe'; return; }
+        sumNote.textContent = d.openCount + ' open' + (d.invoices.some(function (x) { return x.duplicate; }) ? ' · duplicates found' : '');
+        if (!d.invoices.length) list.appendChild(el('p', 'No Stripe invoices found for this customer.', 'muted'));
+        d.invoices.forEach(function (x) { list.appendChild(row(x)); });
+      });
+      loadLog();
+    }
+    refresh.addEventListener('click', load);
+    det.addEventListener('toggle', function () { openCard.stripe = det.open; if (det.open && !loaded) { loaded = true; load(); } });
+    if (det.open) { loaded = true; load(); }
+    det.appendChild(body);
+    return det;
+  }
+
+  // "Any projects for next season?" email: automatic (weekly check, off by default) and one-off.
+  function checkinCard() {
+    var c = cur.customer;
+    var det = el('details', null, 'job'); det.open = !!openCard.checkin;
+    var sum = el('summary'); sum.appendChild(el('b', 'Seasonal check-in email'));
+    var sumNote = el('span', 'asks about projects for next season', 'muted'); sum.appendChild(sumNote);
+    det.appendChild(sum);
+    var body = el('div', null, 'jobbody');
+    var mb = msgBox(), say = mb.say;
+    body.appendChild(el('p', 'Emails the customer by name, asks if they have projects to schedule for the coming season, and tells them how to opt out. Automatic sends are checked weekly, only happen in February, May, August and November, go once per customer per season, and skip anyone you invoiced in the last 45 days.', 'muted'));
+
+    body.appendChild(el('h3', 'Automatic emails (all customers)'));
+    var modeSel = el('select');
+    [['off', 'Off'], ['preview', 'Preview: email only me a summary'], ['on', 'On: email customers automatically']].forEach(function (p) { var o = el('option', p[1]); o.value = p[0]; modeSel.appendChild(o); });
+    var seasonsBox = el('div', null, 'bar'); seasonsBox.style.marginTop = '8px';
+    var seasonCbs = {};
+    ['Spring', 'Summer', 'Fall', 'Winter'].forEach(function (s) {
+      var l = el('label', null, 'show'); l.style.fontSize = '13px';
+      var cb = el('input'); cb.type = 'checkbox'; l.appendChild(cb); l.appendChild(document.createTextNode(' Ask about ' + s));
+      seasonsBox.appendChild(l); seasonCbs[s] = cb;
+    });
+    var mbar = el('div', null, 'bar'); mbar.style.marginTop = '8px';
+    var save = el('button', 'Save automatic settings', 'go small');
+    mbar.appendChild(modeSel); mbar.appendChild(save);
+    var info = el('p', 'Loading…', 'muted');
+    body.appendChild(mbar); body.appendChild(seasonsBox); body.appendChild(info);
+
+    body.appendChild(el('h3', 'This customer'));
+    var optLab = el('label', null, 'show'); optLab.style.fontSize = '13px';
+    var optCb = el('input'); optCb.type = 'checkbox'; optLab.appendChild(optCb);
+    optLab.appendChild(document.createTextNode(' Include ' + c.name + ' in the automatic check-ins'));
+    body.appendChild(optLab);
+    var cbar = el('div', null, 'bar'); cbar.style.marginTop = '10px';
+    var pv = el('button', 'Send me a preview', 'alt');
+    var send = el('button', 'Send now', 'go');
+    cbar.appendChild(pv); cbar.appendChild(send);
+    body.appendChild(cbar);
+    var sentNote = el('p', '', 'muted'); body.appendChild(sentNote);
+    body.appendChild(mb.node);
+
+    var st = null, loaded = false, forceSend = false;
+    function paint(d) {
+      st = d;
+      modeSel.value = d.mode;
+      Object.keys(seasonCbs).forEach(function (s) { seasonCbs[s].checked = d.seasons.indexOf(s) >= 0; });
+      optCb.checked = !d.optOut;
+      sumNote.textContent = 'automatic: ' + d.mode + ' · next: ' + d.next;
+      var lines = [];
+      lines.push('Next season to ask about: ' + d.next + (d.seasonOn ? '' : ' (not turned on above)') + '. ' + (d.inWindow ? 'We are in the send window now.' : 'Automatic sends start in the last month of the current season.'));
+      lines.push('Last automatic run: ' + (d.lastRun || 'never') + '.');
+      lines.push('Would be emailed by the next automatic run: ' + (d.wouldSend.length ? d.wouldSend.join(', ') : 'nobody') + '.');
+      if (d.mode !== 'off') lines.push('Remember: the weekly trigger must be set up in Apps Script (see the setup steps), or nothing runs.');
+      info.textContent = lines.join(' ');
+      send.textContent = forceSend ? 'Send ' + d.next + ' check-in again' : 'Send ' + d.next + ' check-in to ' + (c.email || 'customer');
+      sentNote.textContent = d.sentThisSeason ? 'The ' + d.next + ' check-in already went to this customer on ' + shortDate(d.sentThisSeason) + '.' : '';
+    }
+    function load() {
+      call('checkinStatus', { id: c.id }).then(function (d) {
+        if (!d.ok) { info.textContent = d.error || 'Could not load.'; return; }
+        paint(d);
+      });
+    }
+    var offSave = null;
+    save.addEventListener('click', function () {
+      var seasons = Object.keys(seasonCbs).filter(function (s) { return seasonCbs[s].checked; });
+      var turningOn = modeSel.value === 'on' && (!st || st.mode !== 'on');
+      if (turningOn && !save.dataset.armed) {
+        save.dataset.armed = '1'; save.textContent = 'Tap again to email customers automatically'; save.classList.remove('go'); save.classList.add('danger');
+        setTimeout(function () { delete save.dataset.armed; save.textContent = 'Save automatic settings'; save.classList.remove('danger'); save.classList.add('go'); }, 6000);
+        return;
+      }
+      delete save.dataset.armed; save.textContent = 'Save automatic settings'; save.classList.remove('danger'); save.classList.add('go');
+      save.disabled = true;
+      call('setCheckin', { id: c.id, mode: modeSel.value, seasons: seasons, confirmOn: modeSel.value === 'on' }).then(function (d) {
+        save.disabled = false;
+        if (!d.ok) { say(d.error, 'err'); return; }
+        paint(d);
+        say(d.mode === 'on' ? 'Automatic check-ins are ON.' : (d.mode === 'preview' ? 'Preview mode: you will get a summary email, customers will not.' : 'Automatic check-ins are off.'), 'ok');
+      });
+    });
+    optCb.addEventListener('change', function () {
+      call('setCheckin', { id: c.id, optOut: !optCb.checked }).then(function (d) {
+        if (!d.ok) { say(d.error, 'err'); optCb.checked = !optCb.checked; return; }
+        paint(d); say(optCb.checked ? c.name + ' is on the list.' : c.name + ' will not get automatic check-ins.', 'ok');
+      });
+    });
+    pv.addEventListener('click', function () {
+      pv.disabled = true; say('Sending preview…', 'ok');
+      call('sendCheckin', { id: c.id, season: st ? st.next : undefined, preview: true }).then(function (d) {
+        pv.disabled = false;
+        if (!d.ok) { say(d.error, 'err'); return; }
+        say('Preview sent to ' + d.sentTo + '. Check your inbox.', 'ok');
+      });
+    });
+    var armed = false, armTimer = null;
+    function disarm() { armed = false; clearTimeout(armTimer); send.classList.remove('danger'); send.classList.add('go'); if (st) paint(st); }
+    send.addEventListener('click', function () {
+      if (!c.email) { say('This customer has no email on file. Add it above first.', 'err'); return; }
+      if (!armed) {
+        armed = true; send.textContent = 'Tap again to send to ' + c.email; send.classList.remove('go'); send.classList.add('danger');
+        armTimer = setTimeout(disarm, 6000); return;
+      }
+      armed = false; clearTimeout(armTimer); send.disabled = true; say('Sending…', 'ok');
+      call('sendCheckin', { id: c.id, season: st ? st.next : undefined, confirmSend: true, force: forceSend }).then(function (d) {
+        send.disabled = false; send.classList.remove('danger'); send.classList.add('go');
+        if (!d.ok) {
+          if (d.already) { forceSend = true; if (st) paint(st); }
+          say(d.error, 'err'); return;
+        }
+        forceSend = false;
+        say(d.season + ' check-in sent to ' + d.sentTo + '.', 'ok'); load();
+      });
+    });
+    det.addEventListener('toggle', function () { openCard.checkin = det.open; if (det.open && !loaded) { loaded = true; load(); } });
+    if (det.open) { loaded = true; load(); }
     det.appendChild(body);
     return det;
   }
@@ -512,6 +800,8 @@
     card.appendChild(ab);
     root.appendChild(card);
     root.appendChild(invoiceMailCard());
+    root.appendChild(stripeInvoicesCard());
+    root.appendChild(checkinCard());
 
     // jobs
     var jobs = cur.jobs.filter(function (j) { return j.status !== 'Completed'; }).concat(cur.jobs.filter(function (j) { return j.status === 'Completed'; }));
@@ -563,6 +853,7 @@
     sum.appendChild(el('span', done ? 'Completed' : (j.stage || 'In progress'), 'pill' + (done ? ' done' : '')));
     if (!j.visible) sum.appendChild(el('span', 'Hidden from customer', 'pill done'));
     var dueHead = el('span', '', 'muted'); sum.appendChild(dueHead);
+    var invChip = el('span', '', 'pill done'); invChip.hidden = true; sum.appendChild(invChip);
     det.appendChild(sum);
 
     var body = el('div', null, 'jobbody');
@@ -620,6 +911,56 @@
 
     // invoices
     body.appendChild(el('h3', 'Invoices'));
+    var strip = el('div', null, 'bar'); strip.style.margin = '4px 0 6px';
+    var chk = el('button', 'Invoice sent? Check Stripe', 'alt small');
+    var chkNote = el('span', 'Looks up this job’s Stripe invoices, fills them in below, and tells you if one was emailed.', 'muted');
+    strip.appendChild(chk); strip.appendChild(chkNote);
+    body.appendChild(strip);
+    var loose = el('div'); body.appendChild(loose);
+    function paintCheck(d) {
+      var live = d.invoices.filter(function (x) { return x.status !== 'void'; });
+      var word = { open: 'unpaid', paid: 'paid', uncollectible: 'uncollectible' };
+      var list = live.map(function (x) { return (x.number || x.id) + ' ' + money(x.amount) + ' (' + (word[x.status] || x.status) + ')'; }).join(', ');
+      var text, chip;
+      if (!live.length) { text = 'No Stripe invoice for this job yet.'; chip = 'No invoice yet'; }
+      else if (d.sent) { text = 'Invoice sent ' + shortDate(d.sentOn) + ': ' + list + '.'; chip = 'Invoice sent ' + shortDate(d.sentOn); }
+      else { text = 'Invoice exists but has NOT been emailed yet: ' + list + '.'; chip = 'Invoice not sent'; }
+      var changes = [];
+      if (d.added) changes.push(d.added + ' added');
+      if (d.updated) changes.push(d.updated + ' updated');
+      if (d.hidden) changes.push(d.hidden + ' voided and hidden');
+      if (changes.length) text += ' Invoices below: ' + changes.join(', ') + '.';
+      d.added = 0; d.updated = 0; d.hidden = 0; // shown once; later re-renders keep only the sent state
+      chkNote.textContent = text; chkNote.className = 'muted';
+      invChip.textContent = chip; invChip.hidden = false; invChip.className = 'pill' + (d.sent ? '' : ' done') + (live.length && !d.sent ? ' warn' : '');
+      loose.innerHTML = '';
+      d.unlinked.forEach(function (x) {
+        var r = el('div', null, 'bar'); r.style.margin = '4px 0';
+        r.appendChild(el('span', 'Also in Stripe, not linked to any job: ' + (x.number || x.id) + ' ' + money(x.amount) + ' (' + (x.status === 'open' ? 'unpaid' : x.status) + ')' + (x.match === 'name' ? ', matched by first name only' : ''), 'muted'));
+        var ab = el('button', 'Add to this job', 'go small');
+        ab.addEventListener('click', function () {
+          ab.disabled = true;
+          call('linkInvoice', { id: cur.customer.id, jobId: j.id, invoiceId: x.id }).then(function (r2) {
+            ab.disabled = false;
+            if (!r2.ok) { banner(r2.error, 'err'); return; }
+            syncNote[j.id] = { auto: true }; openJobs[j.id] = true; reload(); // re-check after the page refreshes
+          });
+        });
+        r.appendChild(ab); loose.appendChild(r);
+      });
+    }
+    chk.addEventListener('click', function () {
+      chk.disabled = true; chkNote.className = 'muted'; chkNote.textContent = 'Checking Stripe…';
+      call('syncJobInvoices', { id: cur.customer.id, jobId: j.id }).then(function (d) {
+        chk.disabled = false;
+        if (!d.ok) { chkNote.textContent = d.error; chkNote.style.color = 'var(--red)'; return; }
+        chkNote.style.color = '';
+        syncNote[j.id] = d; openJobs[j.id] = true;
+        if (d.added || d.updated || d.hidden) reload(); else paintCheck(d);
+      });
+    });
+    if (syncNote[j.id] && syncNote[j.id].auto) { delete syncNote[j.id]; setTimeout(function () { chk.click(); }, 0); }
+    else if (syncNote[j.id]) paintCheck(syncNote[j.id]);
     cur.invoices.filter(function (i) { return i.job === j.id; }).forEach(function (i) {
       var r = el('div', null, 'line iv');
       r.appendChild(rowField('Invoices', i, 'number', 'text', { placeholder: 'Invoice #' }));
