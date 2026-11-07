@@ -334,15 +334,23 @@
     sum.appendChild(el('span', c.email ? 'to ' + c.email : 'add an email above first', 'muted'));
     det.appendChild(sum);
     var body = el('div', null, 'jobbody');
+    var msg = el('div', null, 'banner'); msg.hidden = true;
+    function say(text, kind) {
+      msg.textContent = text || ''; msg.className = 'banner ' + (kind === 'ok' ? 'ok' : 'err'); msg.hidden = !text;
+      banner(text, kind);
+      if (text && msg.scrollIntoView) { try { msg.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {} }
+    }
     var g = el('div', null, 'grid2');
     function field(label, node) { var w = el('div'); w.appendChild(el('label', label)); w.appendChild(node); g.appendChild(w); return node; }
     var jobSel = el('select');
     var jobs = cur.jobs.filter(function (j) { return j.status !== 'Completed'; }).concat(cur.jobs.filter(function (j) { return j.status === 'Completed'; }));
     jobs.forEach(function (j) { var o = el('option', j.name + (j.status === 'Completed' ? ' (completed)' : '')); o.value = j.id; jobSel.appendChild(o); });
     if (!jobs.length) jobSel.appendChild(el('option', 'No jobs yet'));
+    if (jobs.length > 1) { var allOpt = el('option', 'All jobs (one combined invoice)'); allOpt.value = '__all__'; jobSel.appendChild(allOpt); }
     field('Job', jobSel);
     var total = el('input'); total.type = 'number'; total.step = '0.01'; total.min = '0'; total.inputMode = 'decimal'; total.placeholder = '2199.92';
     field('Total due ($)', total);
+    var hint = el('div', null, 'muted'); hint.style.marginTop = '4px'; total.parentNode.appendChild(hint);
     var link = el('input'); link.placeholder = 'https://invoice.stripe.com/...'; link.maxLength = 500;
     field('Stripe pay link', link);
     var num = el('input'); num.placeholder = 'e.g. NHLATOKW-0002'; num.maxLength = 40;
@@ -354,11 +362,18 @@
     function syncLine() {
       if (line.dataset.edited) return;
       var o = jobs.length ? jobSel.options[jobSel.selectedIndex] : null;
-      var nm = o ? o.text.replace(/ \(completed\)$/, '') : '';
+      var nm = o && o.value !== '__all__' ? o.text.replace(/ \(completed\)$/, '') : '';
       line.value = /^tbd$/i.test(nm) ? '' : nm;
     }
     line.addEventListener('input', function () { line.dataset.edited = '1'; });
-    jobSel.addEventListener('change', syncLine); syncLine();
+    function sumFor(list, jobId) { var t = 0; list.forEach(function (i) { if (i.visible && (jobId === '__all__' || i.job === jobId)) t += i.amount; }); return r2(t); }
+    function autoTotal() {
+      if (typeof made !== 'undefined' && made) return;
+      var j = jobSel.value, sum = sumFor(cur.items, j), inv = sumFor(cur.invoices, j);
+      total.value = sum > 0 ? sum.toFixed(2) : '';
+      hint.textContent = (j === '__all__' ? 'All jobs' : 'This job') + ': line items ' + money(sum) + (inv ? ', already invoiced ' + money(inv) : '') + '. Edit the total for a partial invoice.';
+    }
+    jobSel.addEventListener('change', function () { syncLine(); autoTotal(); }); syncLine();
     body.appendChild(g);
     var mk = el('div', null, 'bar'); mk.style.marginTop = '12px';
     var create = el('button', 'Create Stripe invoice', 'go');
@@ -383,6 +398,7 @@
     bar.appendChild(pv); bar.appendChild(send);
     body.appendChild(bar);
     body.appendChild(el('p', 'The preview goes to your own address only. The real email goes to the customer with a copy to you, and replies come back to you.', 'muted'));
+    body.appendChild(msg);
 
     function payload(isPreview) {
       return {
@@ -392,17 +408,17 @@
       };
     }
     function check_() {
-      if (!(Number(total.value) > 0)) { banner('Enter the total due.', 'err'); return false; }
-      if (!/^https:\/\/(invoice|pay|buy|checkout)\.stripe\.com\//.test(link.value.trim())) { banner('Paste the Stripe pay link (it starts with https://invoice.stripe.com/).', 'err'); return false; }
+      if (!(Number(total.value) > 0)) { say('Enter the total due.', 'err'); return false; }
+      if (!/^https:\/\/(invoice|pay|buy|checkout)\.stripe\.com\//.test(link.value.trim())) { say('Paste the Stripe pay link (it starts with https://invoice.stripe.com/).', 'err'); return false; }
       return true;
     }
     pv.addEventListener('click', function () {
       if (!check_()) return;
-      pv.disabled = true; banner('Sending preview…', 'ok');
+      pv.disabled = true; say('Sending preview…', 'ok');
       call('sendInvoiceEmail', payload(true)).then(function (d) {
         pv.disabled = false;
-        if (!d.ok) { banner(d.error, 'err'); return; }
-        banner('Preview sent to ' + d.sentTo + '. Check your inbox.', 'ok');
+        if (!d.ok) { say(d.error, 'err'); return; }
+        say('Preview sent to ' + d.sentTo + '. Check your inbox.', 'ok');
       });
     });
     // Stripe invoice creation (the key stays in the backend; this page never sees it)
@@ -418,14 +434,14 @@
     if (stripeOn === null) { call('stripeStatus').then(function (d) { if (d && d.ok) { stripeOn = !!d.connected; updateCreate(); } }); }
     updateCreate();
     create.addEventListener('click', function () {
-      if (!c.email) { banner('This customer has no email on file. Add it above first.', 'err'); return; }
-      if (!(Number(total.value) > 0)) { banner('Enter the total due.', 'err'); return; }
-      create.disabled = true; banner('Creating the Stripe invoice…', 'ok');
+      if (!c.email) { say('This customer has no email on file. Add it above first.', 'err'); return; }
+      if (!(Number(total.value) > 0)) { say('Enter the total due.', 'err'); return; }
+      create.disabled = true; say('Creating the Stripe invoice…', 'ok');
       call('createStripeInvoice', { id: c.id, jobId: jobSel.value, total: total.value, due: due.value, lineDescription: line.value, requestId: rid, confirmCreate: true }).then(function (d) {
-        if (!d.ok) { banner(d.error, 'err'); updateCreate(); return; }
+        if (!d.ok) { say(d.error, 'err'); updateCreate(); return; }
         made = { invoiceId: d.invoiceId, number: d.number };
         link.value = d.link; num.value = d.number; lockFields(true); updateCreate(); disarm();
-        banner('Stripe invoice ' + d.number + ' created for ' + money(d.total) + '. It has not been emailed. Preview it, then send.', 'ok');
+        say('Stripe invoice ' + d.number + ' created for ' + money(d.total) + '. It has not been emailed. Preview it, then send.', 'ok');
       });
     });
     function disarmVoid() { voidArmed = false; clearTimeout(voidTimer); voidBtn.textContent = 'Void and start over'; voidBtn.classList.remove('danger'); voidBtn.classList.add('alt'); }
@@ -435,8 +451,8 @@
       disarmVoid(); voidBtn.disabled = true;
       call('voidStripeInvoice', { invoiceId: made.invoiceId, confirmVoid: true }).then(function (d) {
         voidBtn.disabled = false;
-        if (!d.ok) { banner(d.error, 'err'); return; }
-        banner('Invoice ' + (made.number || '') + ' voided in Stripe. Change the amount and create it again.', 'ok');
+        if (!d.ok) { say(d.error, 'err'); return; }
+        say('Invoice ' + (made.number || '') + ' voided in Stripe. Change the amount and create it again.', 'ok');
         made = null; rid = randomId(); link.value = ''; num.value = ''; lockFields(false); updateCreate(); disarm();
       });
     });
@@ -444,20 +460,21 @@
     function disarm() { armed = false; clearTimeout(armTimer); send.textContent = 'Send to customer'; send.classList.remove('danger'); send.classList.add('go'); }
     [jobSel, total, link, num, due, welcome, review, updated, toPortal].forEach(function (x) { x.addEventListener('change', disarm); });
     send.addEventListener('click', function () {
-      if (!c.email) { banner('This customer has no email on file. Add it above first.', 'err'); return; }
+      if (!c.email) { say('This customer has no email on file. Add it above first.', 'err'); return; }
       if (!check_()) return;
       if (!armed) {
         armed = true; send.textContent = 'Tap again to send to ' + c.email; send.classList.remove('go'); send.classList.add('danger');
         armTimer = setTimeout(disarm, 6000); return;
       }
-      disarm(); send.disabled = true; banner('Sending…', 'ok');
+      disarm(); send.disabled = true; say('Sending…', 'ok');
       call('sendInvoiceEmail', payload(false)).then(function (d) {
         send.disabled = false;
-        if (!d.ok) { banner(d.error, 'err'); return; }
-        banner('Invoice email sent to ' + d.sentTo + (d.portalAdded ? ' and added to their portal.' : '.'), 'ok');
+        if (!d.ok) { say(d.error, 'err'); return; }
+        say('Invoice email sent to ' + d.sentTo + (d.portalAdded ? ' and added to their portal.' : '.'), 'ok');
         if (d.portalAdded) { openJobs[jobSel.value] = true; reload(); }
       });
     });
+    autoTotal();
     det.appendChild(body);
     return det;
   }
