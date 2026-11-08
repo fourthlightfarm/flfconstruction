@@ -78,6 +78,11 @@
   </section>
 
   <div id="app" hidden>
+    <div class="bar" style="margin-top:14px">
+      <button id="tabCust" class="go">Customers</button>
+      <button id="tabOut" class="alt">Outreach</button>
+    </div>
+    <div id="custTab">
     <div class="card bar">
       <select id="cust" aria-label="Customer"></select>
       <button id="btnNew" class="go">New customer</button>
@@ -114,6 +119,8 @@
     </section>
 
     <div id="custView"></div>
+    </div>
+    <div id="outTab" hidden></div>
   </div>
 </main>
 
@@ -207,7 +214,7 @@
   });
   $('btnOut').addEventListener('click', function () {
     key = ''; cur = null; safeStore(true, '');
-    $('app').hidden = true; $('login').hidden = false; $('key').value = ''; $('custView').innerHTML = ''; banner('');
+    $('app').hidden = true; $('login').hidden = false; $('key').value = ''; $('custView').innerHTML = ''; banner(''); $('outTab').innerHTML = ''; showTab('cust');
   });
 
   function fillCustomers(d, selectId) {
@@ -678,7 +685,7 @@
     body.appendChild(el('h3', 'This customer'));
     var optLab = el('label', null, 'show'); optLab.style.fontSize = '13px';
     var optCb = el('input'); optCb.type = 'checkbox'; optLab.appendChild(optCb);
-    optLab.appendChild(document.createTextNode(' Include ' + c.name + ' in the automatic check-ins'));
+    optLab.appendChild(document.createTextNode(' Include ' + c.name + ' in outreach emails (check-ins, events, promotions)'));
     body.appendChild(optLab);
     var cbar = el('div', null, 'bar'); cbar.style.marginTop = '10px';
     var pv = el('button', 'Send me a preview', 'alt');
@@ -1006,6 +1013,276 @@
     det.appendChild(body);
     setTimeout(function () { updateTotals(j.id); }, 0);
     return det;
+  }
+
+  // ---------- Outreach tab: pick customers, pick a message, send now or schedule ----------
+  var outSel = {};      // selected customer ids
+  var outForm = { kind: 'checkin' };
+  var outBuilt = false;
+  var SEASON_ORDER = ['Winter', 'Spring', 'Summer', 'Fall'];
+  function seasonChoices(next) {
+    var m = /^(Spring|Summer|Fall|Winter) (\d{4})$/.exec(next || ''), out = [];
+    if (!m) return out;
+    var idx = SEASON_ORDER.indexOf(m[1]), year = parseInt(m[2], 10);
+    for (var i = 0; i < 4; i++) {
+      out.push(SEASON_ORDER[idx] + ' ' + year);
+      idx++; if (idx === 4) idx = 0;
+      if (SEASON_ORDER[idx] === 'Spring') year++;
+    }
+    return out;
+  }
+  function localNowMin() {
+    var d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().substring(0, 16);
+  }
+
+  function showTab(which) {
+    var out = which === 'out';
+    $('custTab').hidden = out; $('outTab').hidden = !out;
+    $('tabCust').className = out ? 'alt' : 'go'; $('tabOut').className = out ? 'go' : 'alt';
+    banner('');
+    if (out) outreachTab();
+  }
+  $('tabCust').addEventListener('click', function () { showTab('cust'); });
+  $('tabOut').addEventListener('click', function () { showTab('out'); });
+
+  function outreachTab() {
+    var root = $('outTab');
+    root.innerHTML = '';
+    var loading = el('p', 'Loading customers…', 'muted'); root.appendChild(loading);
+    call('outreachList').then(function (d) {
+      root.innerHTML = '';
+      if (!d.ok) { root.appendChild(el('p', d.error || 'Could not load.', 'muted')); return; }
+      buildOutreach(root, d);
+    });
+  }
+
+  function buildOutreach(root, d) {
+    var mb = msgBox(), say = mb.say;
+    // ---- 1. who
+    var who = el('section', null, 'card');
+    who.appendChild(el('h2', '1. Who gets it'));
+    var wbar = el('div', null, 'bar');
+    var selAll = el('button', 'Select everyone eligible', 'alt small');
+    var clear = el('button', 'Clear', 'alt small');
+    var count = el('span', '', 'muted');
+    var filter = el('input'); filter.placeholder = 'Search by name'; filter.style.flex = '1 1 160px'; filter.style.maxWidth = '260px';
+    [filter, selAll, clear, count].forEach(function (x) { wbar.appendChild(x); });
+    who.appendChild(wbar);
+    var listBox = el('div'); listBox.style.marginTop = '8px'; who.appendChild(listBox);
+    who.appendChild(el('p', 'Customers with no email or switched off for outreach cannot be picked. Turn a customer off under their card > Seasonal check-in email.', 'muted'));
+    root.appendChild(who);
+
+    var rows = {};
+    function eligible(c) { return !!c.email && !c.optOut; }
+    function refreshCount() {
+      var n = Object.keys(outSel).filter(function (k) { return outSel[k]; }).length;
+      count.textContent = n + ' selected';
+      updateSend();
+    }
+    d.customers.forEach(function (c) {
+      var r = el('label', null, 'show'); r.style.padding = '6px 0'; r.style.borderBottom = '1px solid #eee'; r.style.fontSize = '14px'; r.style.color = 'var(--ink)'; r.style.flexWrap = 'wrap';
+      var cb = el('input'); cb.type = 'checkbox'; cb.disabled = !eligible(c); cb.checked = !!outSel[c.id] && eligible(c);
+      cb.addEventListener('change', function () { outSel[c.id] = cb.checked; refreshCount(); });
+      r.appendChild(cb);
+      r.appendChild(el('b', ' ' + c.name));
+      var meta = [];
+      meta.push(c.email || 'no email');
+      if (c.last) meta.push('last emailed ' + shortDate(c.last));
+      r.appendChild(el('span', ' · ' + meta.join(' · '), 'muted'));
+      if (!c.email) r.appendChild(el('span', 'No email', 'pill warn'));
+      if (c.optOut) r.appendChild(el('span', 'Not in outreach', 'pill warn'));
+      if (!c.active) r.appendChild(el('span', 'Inactive', 'pill done'));
+      listBox.appendChild(r);
+      rows[c.id] = { row: r, cb: cb, c: c };
+    });
+    if (!d.customers.length) listBox.appendChild(el('p', 'No customers yet.', 'muted'));
+    selAll.addEventListener('click', function () {
+      d.customers.forEach(function (c) { if (eligible(c) && rows[c.id].row.style.display !== 'none') { outSel[c.id] = true; rows[c.id].cb.checked = true; } });
+      refreshCount();
+    });
+    clear.addEventListener('click', function () { outSel = {}; d.customers.forEach(function (c) { rows[c.id].cb.checked = false; }); refreshCount(); });
+    filter.addEventListener('input', function () {
+      var q = filter.value.trim().toLowerCase();
+      d.customers.forEach(function (c) { rows[c.id].row.style.display = !q || c.name.toLowerCase().indexOf(q) >= 0 ? '' : 'none'; });
+    });
+
+    // ---- 2. what
+    var what = el('section', null, 'card');
+    what.appendChild(el('h2', '2. What to send'));
+    var kindSel = el('select');
+    [['checkin', 'Seasonal check-in (any projects for next season?)'], ['event', 'Special event invitation'], ['promo', 'Promotion or special offer'], ['custom', 'Custom message']].forEach(function (p) { var o = el('option', p[1]); o.value = p[0]; kindSel.appendChild(o); });
+    kindSel.value = outForm.kind;
+    what.appendChild(kindSel);
+    var fields = el('div', null, 'grid2'); fields.style.marginTop = '8px'; what.appendChild(fields);
+    var inp = {};
+    function fld(key, label, tag, opts) {
+      var w = el('div'); w.appendChild(el('label', label));
+      var i = el(tag === 'textarea' ? 'textarea' : (tag === 'select' ? 'select' : 'input'));
+      if (opts && opts.maxLength) i.maxLength = opts.maxLength;
+      if (opts && opts.placeholder) i.placeholder = opts.placeholder;
+      if (opts && opts.options) opts.options.forEach(function (o) { var op = el('option', o); op.value = o; i.appendChild(op); });
+      if (opts && opts.wide) w.style.gridColumn = '1 / -1';
+      i.value = outForm[key] != null ? outForm[key] : (opts && opts.value) || '';
+      i.addEventListener('input', function () { outForm[key] = i.value; disarm(); });
+      i.addEventListener('change', function () { outForm[key] = i.value; disarm(); });
+      w.appendChild(i); fields.appendChild(w); inp[key] = i; return i;
+    }
+    var hintBox = el('p', '', 'muted'); what.appendChild(hintBox);
+    function drawFields() {
+      fields.innerHTML = ''; inp = {};
+      var k = kindSel.value;
+      if (k === 'checkin') {
+        fld('season', 'Season to ask about', 'select', { options: seasonChoices(d.next), value: d.next });
+        hintBox.textContent = 'Each customer gets their own check-in (it mentions their completed job by name). A customer who already got that season’s check-in is skipped.';
+      } else if (k === 'event') {
+        fld('title', 'Event name', 'input', { maxLength: 120, placeholder: 'Open house at the shop' });
+        fld('when', 'When', 'input', { maxLength: 120, placeholder: 'Saturday, March 14, 10am to 2pm' });
+        fld('where', 'Where', 'input', { maxLength: 160, placeholder: 'Address or "online"' });
+        fld('details', 'Details (optional)', 'textarea', { maxLength: 3000, wide: true, placeholder: 'What to expect, what to bring, who to ask.' });
+        hintBox.textContent = 'Starts with “Hi {first}, we would love to see you at …”, then adds the details above and asks them to reply to RSVP.';
+      } else if (k === 'promo') {
+        fld('title', 'Headline (this is the email subject)', 'input', { maxLength: 120, placeholder: '10% off fall deck builds' });
+        fld('ends', 'Offer ends (optional)', 'input', { maxLength: 100, placeholder: 'October 31' });
+        fld('details', 'The offer', 'textarea', { maxLength: 3000, wide: true, placeholder: 'Describe exactly what the customer gets and any conditions.' });
+        hintBox.textContent = 'Only what you type goes out. Spell out the terms, because nothing is added for you.';
+      } else {
+        fld('subject', 'Subject', 'input', { maxLength: 150 });
+        fld('body', 'Message', 'textarea', { maxLength: 5000, wide: true, placeholder: 'Hi {first}, …' });
+        hintBox.textContent = 'Use {first} for their first name and {name} for their full name.';
+      }
+    }
+    kindSel.addEventListener('change', function () { outForm.kind = kindSel.value; drawFields(); disarm(); shown.hidden = true; });
+    root.appendChild(what);
+
+    // ---- 3. when
+    var when = el('section', null, 'card');
+    when.appendChild(el('h2', '3. When'));
+    var wnow = el('label', null, 'show'); wnow.style.fontSize = '14px'; wnow.style.color = 'var(--ink)';
+    var rNow = el('input'); rNow.type = 'radio'; rNow.name = 'outwhen'; rNow.checked = true;
+    wnow.appendChild(rNow); wnow.appendChild(document.createTextNode(' Send now'));
+    var wlater = el('label', null, 'show'); wlater.style.fontSize = '14px'; wlater.style.color = 'var(--ink)'; wlater.style.marginTop = '6px';
+    var rLater = el('input'); rLater.type = 'radio'; rLater.name = 'outwhen';
+    wlater.appendChild(rLater); wlater.appendChild(document.createTextNode(' Schedule for'));
+    var dt = el('input'); dt.type = 'datetime-local'; dt.min = localNowMin(); dt.style.maxWidth = '240px'; dt.disabled = true;
+    wlater.appendChild(dt);
+    when.appendChild(wnow); when.appendChild(wlater);
+    when.appendChild(el('p', 'Times are Eastern. Scheduled emails go out within the hour, but only while the hourly scheduler trigger is set up. If the scheduler is more than 24 hours late, the email is skipped, never sent late.', 'muted'));
+    function whenChanged() { dt.disabled = !rLater.checked; disarm(); }
+    rNow.addEventListener('change', whenChanged); rLater.addEventListener('change', whenChanged); dt.addEventListener('change', disarm);
+    root.appendChild(when);
+
+    // ---- 4. send
+    var go = el('section', null, 'card');
+    go.appendChild(el('h2', '4. Check it and send'));
+    var bar = el('div', null, 'bar');
+    var showB = el('button', 'Show the message', 'alt');
+    var pv = el('button', 'Send me a preview', 'alt');
+    var send = el('button', 'Send now', 'go');
+    bar.appendChild(showB); bar.appendChild(pv); bar.appendChild(send);
+    go.appendChild(bar);
+    var shown = el('div', null, 'copybox'); shown.hidden = true; go.appendChild(shown);
+    go.appendChild(mb.node);
+    go.appendChild(el('p', 'Every email comes from your business Google account with a copy to you, replies come back to you, and each one ends with a line telling them how to opt out. The preview goes only to you.', 'muted'));
+    root.appendChild(go);
+
+    function selected() { return Object.keys(outSel).filter(function (k) { return outSel[k]; }); }
+    function payload() {
+      var p = { kind: kindSel.value, recipients: selected() };
+      ['season', 'title', 'when', 'where', 'ends', 'details', 'subject', 'body'].forEach(function (k) { if (inp[k]) p[k] = inp[k].value; });
+      if (rLater.checked) p.sendAt = dt.value;
+      return p;
+    }
+    var armed = false, armTimer = null;
+    function label() {
+      var n = selected().length;
+      return (rLater.checked ? 'Schedule for ' : 'Send now to ') + n + ' customer' + (n === 1 ? '' : 's');
+    }
+    function updateSend() { if (!armed) send.textContent = label(); }
+    function disarm() { armed = false; clearTimeout(armTimer); send.classList.remove('danger'); send.classList.add('go'); send.textContent = label(); }
+    drawFields(); disarm();
+
+    showB.addEventListener('click', function () {
+      var p = payload();
+      call('outreachText', p).then(function (r) {
+        if (!r.ok) { say(r.error, 'err'); return; }
+        say('', 'ok');
+        shown.textContent = 'Subject: ' + r.subject + '\n\n' + r.text + (selected().length ? '' : '\n\n(Pick a customer to see it with their name.)');
+        shown.hidden = false;
+      });
+    });
+    pv.addEventListener('click', function () {
+      var p = payload(); p.preview = true;
+      pv.disabled = true; say('Sending preview…', 'ok');
+      call('outreachSend', p).then(function (r) {
+        pv.disabled = false;
+        if (!r.ok) { say(r.error, 'err'); return; }
+        say('Preview sent to ' + r.sentTo + '. Check your inbox.', 'ok');
+      });
+    });
+    send.addEventListener('click', function () {
+      var n = selected().length;
+      if (!n) { say('Pick at least one customer.', 'err'); return; }
+      if (rLater.checked && !dt.value) { say('Pick the date and time to send.', 'err'); return; }
+      if (!armed) {
+        armed = true; send.textContent = 'Tap again: ' + (rLater.checked ? 'schedule for ' : 'send to ') + n + ' customer' + (n === 1 ? '' : 's');
+        send.classList.remove('go'); send.classList.add('danger'); armTimer = setTimeout(disarm, 6000); return;
+      }
+      var p = payload(); p.confirmSend = true;
+      disarm(); send.disabled = true; say(rLater.checked ? 'Scheduling…' : 'Sending…', 'ok');
+      call('outreachSend', p).then(function (r) {
+        send.disabled = false;
+        if (!r.ok) { say(r.error, 'err'); return; }
+        if (r.scheduled) { say('Scheduled for ' + r.sendAt + ' (Eastern) to ' + r.count + ' customer' + (r.count === 1 ? '' : 's') + '.', 'ok'); }
+        else {
+          var s = r.sent + ' sent';
+          if (r.skipped.length) s += '. Skipped: ' + r.skipped.join('; ');
+          if (r.failed.length) s += '. Failed: ' + r.failed.join('; ');
+          say(s + '.', r.failed.length || !r.sent ? 'err' : 'ok');
+        }
+        outSel = {};
+        refreshCampaigns();
+        d.customers.forEach(function (c) { rows[c.id].cb.checked = false; }); refreshCount();
+      });
+    });
+
+    // ---- 5. history
+    var hist = el('section', null, 'card');
+    hist.appendChild(el('h2', 'Scheduled and recent'));
+    var histNote = el('p', '', 'muted'); hist.appendChild(histNote);
+    var histBox = el('div'); hist.appendChild(histBox);
+    root.appendChild(hist);
+    function paintCampaigns(list, lastRun, scheduled) {
+      histNote.textContent = 'Scheduler last ran: ' + (lastRun || 'never') + '.' + (scheduled && !lastRun ? ' You have scheduled emails but the hourly trigger has not run yet, so they will not go out until it is set up.' : '');
+      histBox.innerHTML = '';
+      if (!list.length) histBox.appendChild(el('p', 'Nothing sent or scheduled yet.', 'muted'));
+      list.forEach(function (c) {
+        var r = el('div', null, 'sinv');
+        var top = el('div', null, 'bar');
+        top.appendChild(el('b', c.subject));
+        top.appendChild(el('span', c.status, 'pill' + (c.status === 'Sent' ? '' : (c.status === 'Scheduled' ? '' : ' warn'))));
+        r.appendChild(top);
+        var bits = [c.sendAt === 'now' ? 'Sent ' + shortDate(c.created.substring(0, 10)) : 'For ' + c.sendAt, c.kind, c.count + ' customer' + (c.count === 1 ? '' : 's') + (c.status === 'Sent' || c.status === 'Partial' ? ' (' + c.sent + ' sent)' : ''), c.who];
+        r.appendChild(el('div', bits.filter(function (s) { return s; }).join(' · '), 'muted'));
+        if (c.detail) r.appendChild(el('div', c.detail, 'muted'));
+        if (c.status === 'Scheduled') {
+          var ab = el('div', null, 'bar'); var cb = el('button', 'Cancel', 'alt small');
+          twoTap(cb, 'Cancel', 'Tap again to cancel', function () {
+            call('outreachCancel', { campaignId: c.id }).then(function (x) {
+              if (!x.ok) { say(x.error, 'err'); return; }
+              say('Cancelled. Nothing will be sent.', 'ok'); refreshCampaigns();
+            });
+          });
+          ab.appendChild(cb); r.appendChild(ab);
+        }
+        histBox.appendChild(r);
+      });
+    }
+    function refreshCampaigns() {
+      call('outreachList').then(function (x) { if (x.ok) paintCampaigns(x.campaigns, x.lastRun, x.scheduled); });
+    }
+    paintCampaigns(d.campaigns, d.lastRun, d.scheduled);
+    refreshCount();
   }
 
   (function init() {
