@@ -58,6 +58,15 @@
     .logline b { color:var(--brown); }
     @media (max-width:760px) { .logline { grid-template-columns:1fr; } }
     .pill.warn { background:#f4d9a8; color:#6b3d00; }
+    .files { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:10px; margin:8px 0; }
+    .tile { border:1px solid var(--line); border-radius:8px; padding:6px; background:var(--cream); display:flex; flex-direction:column; gap:4px; min-width:0; }
+    .tile .pic { height:96px; border-radius:6px; background:var(--tan); display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:pointer; font-weight:700; color:var(--brown); font-size:15px; text-transform:uppercase; }
+    .tile .pic img { width:100%; height:100%; object-fit:cover; display:block; }
+    .tile .nm { font-size:12.5px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .tile .bar { gap:6px; }
+    .lightbox { position:fixed; top:0; right:0; bottom:0; left:0; background:rgba(20,14,10,.88); z-index:50; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:16px; }
+    .lightbox img { max-width:100%; max-height:78vh; border-radius:6px; background:#fff; }
+    .lightbox .nm { color:#fff; font-weight:600; overflow-wrap:anywhere; text-align:center; }
     [hidden] { display:none !important; }
   </style>
 </head>
@@ -842,7 +851,7 @@
     db.addEventListener('click', function () {
       call('deleteCustomer', { id: c.id, confirm: c.id }).then(function (d) {
         if (!d.ok) { banner(d.error, 'err'); return; }
-        banner(c.name + ' deleted.', 'ok'); cur = null; $('custView').innerHTML = '';
+        banner(c.name + ' deleted.' + (d.driveWarning ? ' ' + d.driveWarning : ''), d.driveWarning ? 'err' : 'ok'); cur = null; $('custView').innerHTML = '';
         call('getCustomers').then(function (l) { if (l.ok) { fillCustomers(l, ''); if ($('cust').value) loadCustomer($('cust').value); } });
       });
     });
@@ -883,7 +892,23 @@
     var vis = el('label', null, 'show'); var vcb = el('input'); vcb.type = 'checkbox'; vcb.checked = j.visible;
     vis.appendChild(vcb); vis.appendChild(document.createTextNode('Show this job to the customer'));
     saver(vcb, function () { return vcb.checked; }, function (v) { return call('setJob', { id: cur.customer.id, jobId: j.id, visible: v }); }, function (v) { j.visible = v; });
-    jb.appendChild(vis); body.appendChild(jb);
+    jb.appendChild(vis);
+    var delJob = el('button', 'Delete job', 'alt small'); delJob.style.marginLeft = 'auto';
+    var nItems = cur.items.filter(function (i) { return i.job === j.id; }).length;
+    var nInv = cur.invoices.filter(function (i) { return i.job === j.id; }).length;
+    var nUp = cur.updates.filter(function (i) { return i.job === j.id; }).length;
+    var nFiles = (cur.files || []).filter(function (i) { return i.job === j.id; }).length;
+    twoTap(delJob, 'Delete job', 'Tap again: delete this job, ' + nItems + ' line item' + (nItems === 1 ? '' : 's') + ', ' + nInv + ' invoice' + (nInv === 1 ? '' : 's') + ', ' + nUp + ' update' + (nUp === 1 ? '' : 's') + ', ' + nFiles + ' file' + (nFiles === 1 ? '' : 's'), function () {
+      delJob.disabled = true;
+      call('deleteJob', { id: cur.customer.id, jobId: j.id }).then(function (d) {
+        delJob.disabled = false;
+        if (!d.ok) { banner(d.error, 'err'); return; }
+        delete openJobs[j.id];
+        reload().then(function () { banner('Job deleted: ' + j.name + '. Removed ' + d.removed.lineItems + ' line items, ' + d.removed.invoices + ' invoices, ' + d.removed.updates + ' updates, ' + d.removed.files + ' files. Files can be recovered from the Drive trash for 30 days.', 'ok'); });
+      });
+    });
+    jb.appendChild(delJob);
+    body.appendChild(jb);
 
     var stats = el('div', null, 'stats');
     var te = {};
@@ -1010,9 +1035,148 @@
     [ut, ud, ubtn].forEach(function (x) { au.appendChild(x); });
     body.appendChild(au);
 
+    filesSection(j, body);
+
     det.appendChild(body);
     setTimeout(function () { updateTotals(j.id); }, 0);
     return det;
+  }
+
+  // ---------- job photos and files (kept in Google Drive, office only) ----------
+  var UP_MAX = 8 * 1024 * 1024;
+  var FILE_ACCEPT = 'image/*,.jpg,.jpeg,.png,.gif,.webp,.heic,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt';
+  function fmtKb(kb) { return kb >= 1024 ? (Math.round(kb / 102.4) / 10) + ' MB' : kb + ' KB'; }
+  function extOf(n) { var m = /\.([A-Za-z0-9]{1,5})$/.exec(n || ''); return m ? m[1].toLowerCase() : ''; }
+  function readB64(blob) {
+    return new Promise(function (res, rej) {
+      var fr = new FileReader();
+      fr.onload = function () { res(String(fr.result).split(',')[1] || ''); };
+      fr.onerror = function () { rej(new Error('read')); };
+      fr.readAsDataURL(blob);
+    });
+  }
+  function loadImage(file) {
+    return new Promise(function (res, rej) {
+      var u = URL.createObjectURL(file), im = new Image();
+      im.onload = function () { URL.revokeObjectURL(u); res(im); };
+      im.onerror = function () { URL.revokeObjectURL(u); rej(new Error('img')); };
+      im.src = u;
+    });
+  }
+  function scaledCanvas(im, max) {
+    var w = im.naturalWidth || im.width, h = im.naturalHeight || im.height, k = Math.min(1, max / Math.max(w, h));
+    var c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+    var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0, c.width, c.height);
+    return c;
+  }
+  // Photos are shrunk to 1600px (JPEG) and get a tiny thumbnail; other files go up as they are.
+  function prepFile(file) {
+    var name = file.name || 'file';
+    var plain = function () { return readB64(file).then(function (b) { return { name: name, data: b, thumb: '', size: file.size }; }); };
+    var isImg = /^image\//.test(file.type) || /\.(jpe?g|png|webp|heic)$/i.test(name);
+    if (!isImg || /\.gif$/i.test(name)) return plain();
+    return loadImage(file).then(function (im) {
+      var w = im.naturalWidth || im.width, h = im.naturalHeight || im.height;
+      var thumb = scaledCanvas(im, 120).toDataURL('image/jpeg', 0.6);
+      if (Math.max(w, h) <= 1600 && file.size <= 1500000) return readB64(file).then(function (b) { return { name: name, data: b, thumb: thumb, size: file.size }; });
+      return new Promise(function (res) { scaledCanvas(im, 1600).toBlob(res, 'image/jpeg', 0.82); }).then(function (blob) {
+        if (!blob) return plain();
+        return readB64(blob).then(function (b) { return { name: name.replace(/\.[A-Za-z0-9]+$/, '') + '.jpg', data: b, thumb: thumb, size: blob.size }; });
+      });
+    }, plain);
+  }
+  function lightbox(url, name, type) {
+    var box = el('div', null, 'lightbox');
+    var img = el('img'); img.src = url; img.alt = name;
+    var cap = el('div', name, 'nm');
+    var bar = el('div', null, 'bar');
+    var dl = el('a', 'Download'); dl.href = url; dl.download = name; dl.className = 'pill'; dl.style.padding = '8px 14px';
+    var cl = el('button', 'Close', 'alt small'); cl.style.background = '#fff';
+    function close() { URL.revokeObjectURL(url); if (box.parentNode) box.parentNode.removeChild(box); }
+    cl.addEventListener('click', close);
+    box.addEventListener('click', function (e) { if (e.target === box) close(); });
+    bar.appendChild(dl); bar.appendChild(cl);
+    box.appendChild(img); box.appendChild(cap); box.appendChild(bar);
+    document.body.appendChild(box);
+  }
+  function openFile(f, btn) {
+    if (btn) btn.disabled = true;
+    call('getJobFile', { id: cur.customer.id, fileId: f.fileId }).then(function (d) {
+      if (btn) btn.disabled = false;
+      if (!d.ok) { banner(d.error, 'err'); return; }
+      var bin = atob(d.data), u8 = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      var url = URL.createObjectURL(new Blob([u8], { type: d.type }));
+      if (/^image\/(jpeg|png|gif|webp)$/.test(d.type)) { lightbox(url, d.name, d.type); return; }
+      var a = el('a'); a.href = url; a.download = d.name; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+    });
+  }
+  function filesSection(j, body) {
+    body.appendChild(el('h3', 'Photos and files'));
+    var mine = (cur.files || []).filter(function (f) { return f.job === j.id; });
+    var bar = el('div', null, 'bar'); bar.style.margin = '4px 0 6px';
+    var pick = el('input'); pick.type = 'file'; pick.multiple = true; pick.accept = FILE_ACCEPT; pick.hidden = true;
+    var add = el('button', 'Add photos or files', 'go small');
+    var note = el('span', 'Office only, customers do not see these. Photos are shrunk before upload. Other files up to 8 MB.', 'muted');
+    add.addEventListener('click', function () { pick.click(); });
+    bar.appendChild(add); bar.appendChild(pick); bar.appendChild(note);
+    body.appendChild(bar);
+    var status = el('div', null, 'muted'); status.hidden = true; body.appendChild(status);
+
+    pick.addEventListener('change', function () {
+      var list = Array.prototype.slice.call(pick.files || []);
+      pick.value = '';
+      if (!list.length) return;
+      var done = 0, failed = [];
+      add.disabled = true;
+      function finish() {
+        add.disabled = false; status.hidden = true;
+        var msg = done ? done + ' file' + (done === 1 ? '' : 's') + ' added.' : '';
+        if (failed.length) msg += (msg ? ' ' : '') + failed.length + ' not added: ' + failed.join('; ');
+        var kind = failed.length ? 'err' : 'ok';
+        if (done) { openJobs[j.id] = true; reload().then(function () { banner(msg, kind); }); } else banner(msg, kind);
+      }
+      function next(i) {
+        if (i >= list.length) { finish(); return; }
+        var f = list[i];
+        status.hidden = false; status.textContent = 'Uploading ' + (i + 1) + ' of ' + list.length + ': ' + f.name + '…';
+        prepFile(f).then(function (p) {
+          if (p.size > UP_MAX) { failed.push(f.name + ' is over 8 MB'); next(i + 1); return; }
+          return call('uploadJobFile', { id: cur.customer.id, jobId: j.id, name: p.name, data: p.data, thumb: p.thumb }).then(function (d) {
+            if (d.ok) done++; else failed.push(f.name + ': ' + d.error);
+            next(i + 1);
+          });
+        }).catch(function () { failed.push(f.name + ': could not read it'); next(i + 1); });
+      }
+      next(0);
+    });
+
+    if (!mine.length) { body.appendChild(el('p', 'No photos or files yet.', 'muted')); return; }
+    var grid = el('div', null, 'files');
+    mine.forEach(function (f) {
+      var t = el('div', null, 'tile');
+      var pic = el('div', null, 'pic');
+      if (f.thumb) { var im = el('img'); im.src = f.thumb; im.alt = f.name; pic.appendChild(im); } else pic.textContent = extOf(f.name) || 'file';
+      pic.addEventListener('click', function () { openFile(f, null); });
+      t.appendChild(pic);
+      var nm = el('div', f.name, 'nm'); nm.title = f.name; t.appendChild(nm);
+      t.appendChild(el('div', shortDate(f.date) + ' · ' + fmtKb(f.kb), 'muted'));
+      var b = el('div', null, 'bar');
+      var ob = el('button', 'Open', 'alt small'); ob.addEventListener('click', function () { openFile(f, ob); });
+      var db = el('button', 'Delete', 'alt small');
+      twoTap(db, 'Delete', 'Sure?', function () {
+        db.disabled = true;
+        call('deleteJobFile', { id: cur.customer.id, fileId: f.fileId }).then(function (d) {
+          db.disabled = false;
+          if (!d.ok) { banner(d.error, 'err'); return; }
+          openJobs[j.id] = true; reload().then(function () { banner('Deleted ' + f.name + '. It stays in the Drive trash for 30 days.', 'ok'); });
+        });
+      });
+      b.appendChild(ob); b.appendChild(db); t.appendChild(b);
+      grid.appendChild(t);
+    });
+    body.appendChild(grid);
   }
 
   // ---------- Outreach tab: pick customers, pick a message, send now or schedule ----------
