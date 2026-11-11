@@ -67,6 +67,49 @@
     .lightbox { position:fixed; top:0; right:0; bottom:0; left:0; background:rgba(20,14,10,.88); z-index:50; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:16px; }
     .lightbox img { max-width:100%; max-height:78vh; border-radius:6px; background:#fff; }
     .lightbox .nm { color:#fff; font-weight:600; overflow-wrap:anywhere; text-align:center; }
+    /* Estimator tab */
+    #estTab .sub { margin-top:14px; }
+    #estTab table { width:100%; border-collapse:collapse; }
+    #estTab th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); padding:3px 4px; }
+    #estTab td { padding:3px; vertical-align:middle; }
+    #estTab td input, #estTab td select { padding:5px 6px; font-size:14px; }
+    #estTab .num { text-align:right; }
+    #estTab .tblwrap { overflow-x:auto; }
+    #estTab .totals { display:grid; grid-template-columns:1fr auto; gap:4px 16px; max-width:440px; margin-left:auto; }
+    #estTab .totals div:nth-child(even) { text-align:right; font-variant-numeric:tabular-nums; }
+    #estTab .totals .big { font-size:18px; font-weight:700; color:var(--brown); border-top:2px solid var(--brown); padding-top:6px; margin-top:4px; }
+    #estTab .tk { display:grid; grid-template-columns:1fr 290px; gap:12px; align-items:start; }
+    @media (max-width:860px) { #estTab .tk { grid-template-columns:1fr; } }
+    #estTab .tools { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:8px; }
+    #estTab .stage { border:1px solid var(--sage); background:#6f6f6f; border-radius:8px; overflow:auto; height:60vh; min-height:340px; }
+    #estTab .stage .wrap { position:relative; display:inline-block; line-height:0; }
+    #estTab .stage canvas { display:block; }
+    #estTab #e-ov { position:absolute; left:0; top:0; cursor:crosshair; }
+    #estTab #e-ov.pan { cursor:grab; }
+    #estTab .drop { color:#ddd; padding:36px 20px; text-align:center; line-height:1.5; font-size:14px; }
+    #estTab .meas { border:1px solid var(--line); border-radius:8px; padding:8px; margin-bottom:8px; background:#fff; }
+    #estTab .meas .top { display:flex; gap:6px; align-items:center; }
+    #estTab .meas .top input { flex:1; padding:4px 6px; font-size:14px; }
+    #estTab .meas .val { font-weight:700; color:var(--brown); white-space:nowrap; }
+    #estTab .meas .add { display:flex; gap:6px; margin-top:6px; }
+    #estTab .meas .add select { flex:1; padding:4px; font-size:13px; }
+    #estTab .calbox { background:#fbf1e3; border:1px solid #e6c796; border-radius:8px; padding:8px; margin-top:8px; }
+    #estTab .rowf { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; }
+    #estTab .rowf > div { flex:1 1 120px; }
+    #estTab .rowf > .fix { flex:0 0 auto; }
+    #estTab .rowf label { margin-top:0; }
+    .estQuote { border:1px solid var(--line); border-radius:8px; padding:20px 22px; background:#fff; max-width:780px; }
+    .estQuote table { width:100%; border-collapse:collapse; }
+    .estQuote th, .estQuote td { padding:6px 8px; border-bottom:1px solid var(--tan); text-align:left; }
+    .estQuote .r { text-align:right; }
+    .estQuote tr.total td { font-weight:700; font-size:17px; border-top:2px solid var(--brown); border-bottom:0; }
+    body.estprint .estQuote { border:0; padding:0; max-width:none; }
+    #printRoot { display:none; }
+    @media print {
+      body.estprint main { display:none !important; }
+      body.estprint #printRoot { display:block !important; }
+      body.estprint { background:#fff; }
+    }
     [hidden] { display:none !important; }
   </style>
 </head>
@@ -90,6 +133,7 @@
     <div class="bar" style="margin-top:14px">
       <button id="tabCust" class="go">Customers</button>
       <button id="tabOut" class="alt">Outreach</button>
+      <button id="tabEst" class="alt">Estimator</button>
     </div>
     <div id="custTab">
     <div class="card bar">
@@ -130,8 +174,10 @@
     <div id="custView"></div>
     </div>
     <div id="outTab" hidden></div>
+    <div id="estTab" hidden></div>
   </div>
 </main>
+<div id="printRoot"></div>
 
 <script>
   var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwIpw5AZRQRBiFH3PYEdqzyKQlK5oIWLYQBtKc16IDFqXxhHheYxkjRCMt2pLC8Ip0Q/exec';
@@ -223,7 +269,7 @@
   });
   $('btnOut').addEventListener('click', function () {
     key = ''; cur = null; safeStore(true, '');
-    $('app').hidden = true; $('login').hidden = false; $('key').value = ''; $('custView').innerHTML = ''; banner(''); $('outTab').innerHTML = ''; showTab('cust');
+    $('app').hidden = true; $('login').hidden = false; $('key').value = ''; $('custView').innerHTML = ''; banner(''); $('outTab').innerHTML = ''; estimatorReset(); showTab('cust');
   });
 
   function fillCustomers(d, selectId) {
@@ -1201,14 +1247,17 @@
   }
 
   function showTab(which) {
-    var out = which === 'out';
-    $('custTab').hidden = out; $('outTab').hidden = !out;
-    $('tabCust').className = out ? 'alt' : 'go'; $('tabOut').className = out ? 'go' : 'alt';
+    $('custTab').hidden = which !== 'cust'; $('outTab').hidden = which !== 'out'; $('estTab').hidden = which !== 'est';
+    $('tabCust').className = which === 'cust' ? 'go' : 'alt';
+    $('tabOut').className = which === 'out' ? 'go' : 'alt';
+    $('tabEst').className = which === 'est' ? 'go' : 'alt';
     banner('');
-    if (out) outreachTab();
+    if (which === 'out') outreachTab();
+    if (which === 'est') estimatorTab();
   }
   $('tabCust').addEventListener('click', function () { showTab('cust'); });
   $('tabOut').addEventListener('click', function () { showTab('out'); });
+  $('tabEst').addEventListener('click', function () { showTab('est'); });
 
   function outreachTab() {
     var root = $('outTab');
@@ -1448,6 +1497,701 @@
     paintCampaigns(d.campaigns, d.lastRun, d.scheduled);
     refreshCount();
   }
+
+  // ---------- Estimator tab: estimate builder, plan takeoff, quote, hand-off to a portal job ----------
+  // Price list and saved estimates live in the Estimator sheet (private, behind the admin key).
+  // If the backend has not been updated yet, they fall back to this device only.
+  (function () {
+    var built = false, srv = null, P = null, S = null, saved = [];
+    var K_DRAFT = 'flfc_office_est_draft_v1', K_PRICES = 'flfc_office_est_prices_v1', K_SAVED = 'flfc_office_est_saved_v1';
+    function lsGet(k, d) { try { var s = localStorage.getItem(k); return s ? JSON.parse(s) : d; } catch (e) { return d; } }
+    function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+    function $e(id) { return document.getElementById('e-' + id); }
+    function uid() { return Math.random().toString(36).slice(2, 9); }
+    function num(v) { var n = parseFloat(v); return isFinite(n) ? n : 0; }
+    function round2(n) { return Math.round(n * 100) / 100; }
+    function fm(n) { return '$' + (Math.round((n + 1e-9) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+    function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+    function toast(msg, kind) { banner(msg, kind || 'ok'); clearTimeout(toast.t); toast.t = setTimeout(function () { banner(''); }, 2500); }
+    function parseLen(s) {
+      s = String(s || '').trim().toLowerCase().replace(/[”″]/g, '"').replace(/[’′]/g, "'");
+      var m;
+      if ((m = /^(\d+(?:\.\d+)?)$/.exec(s))) return parseFloat(m[1]);
+      if ((m = /^(\d+(?:\.\d+)?)\s*(?:ft|feet|foot)$/.exec(s))) return parseFloat(m[1]);
+      if ((m = /^(\d+(?:\.\d+)?)\s*(?:in|inch|inches)$/.exec(s))) return parseFloat(m[1]) / 12;
+      if ((m = /^(\d+(?:\.\d+)?)\s*"$/.exec(s))) return parseFloat(m[1]) / 12;
+      if ((m = /^(\d+(?:\.\d+)?)\s*(?:'|ft)\s*-?\s*(\d+(?:\.\d+)?)?\s*(?:"|in)?$/.exec(s))) return parseFloat(m[1]) + (m[2] ? parseFloat(m[2]) / 12 : 0);
+      if ((m = /^(\d+)\s*-\s*(\d+(?:\.\d+)?)$/.exec(s))) return parseFloat(m[1]) + parseFloat(m[2]) / 12;
+      return NaN;
+    }
+
+    // ----- data -----
+    // STARTER numbers are placeholders, not FLFC's real costs. They show a warning until edited.
+    var STARTER = [
+      ['Tile - floor', 'SF', 0.20, 8.00, 'Tile, thinset, grout'],
+      ['Tile - shower / tub wall', 'SF', 0.30, 9.00, 'Tile, thinset, grout'],
+      ['Tile - shower pan / pebble floor', 'SF', 0.60, 14.00, 'Pebble tile, mortar bed, grout'],
+      ['Waterproofing membrane', 'SF', 0.05, 2.50, 'Membrane / board'],
+      ['Rot repair - trim, sill, siding', 'LF', 0.50, 6.00, 'Lumber, trim, fasteners, primer'],
+      ['Rot repair - sheathing / framing', 'SF', 0.40, 4.00, 'Lumber, sheathing, fasteners'],
+      ['Framing - wall', 'LF', 0.25, 9.00, 'Studs, plates, fasteners'],
+      ['Drywall - hang and finish', 'SF', 0.05, 0.90, 'Board, mud, tape, screws'],
+      ['Flooring - install', 'SF', 0.06, 4.00, 'Flooring, underlayment'],
+      ['Paint - walls', 'SF', 0.015, 0.20, 'Paint, primer, supplies'],
+      ['Door / window install', 'EA', 2.00, 250.00, 'Unit, trim, flashing, hardware'],
+      ['Architectural drafting', 'HR', 1.00, 0.00, '']
+    ].map(function (r) { return { id: uid(), name: r[0], unit: r[1], hrs: r[2], mat: r[3], matDesc: r[4], starter: true }; });
+    function defaultPrices() { return { labor: 150, markup: 0, cont: 0, dump: 150, travel: 150, cash: 10, card: 3, valid: 30, asm: STARTER.map(function (a) { return Object.assign({}, a); }) }; }
+    function freshState() { return { estId: '', job: { customer: '', job: '', address: '', date: new Date().toISOString().slice(0, 10), notes: '' }, items: [], takeoff: { file: '', cal: {}, meas: [] }, posted: null }; }
+    function fixState(s) {
+      if (!s || !Array.isArray(s.items)) return freshState();
+      if (!s.job) s.job = freshState().job;
+      if (!s.takeoff) s.takeoff = { file: '', cal: {}, meas: [] };
+      return s;
+    }
+    function fixPrices(p) {
+      var d = defaultPrices();
+      if (!p || typeof p !== 'object' || !Array.isArray(p.asm)) return d;
+      Object.keys(d).forEach(function (k) { if (p[k] == null) p[k] = d[k]; });
+      return p;
+    }
+
+    // ----- storage -----
+    var priceTimer = null;
+    function saveDraft() { lsSet(K_DRAFT, S); }
+    function setStatus(msg, bad) { var e = $e('status'); if (e) { e.textContent = msg; e.style.color = bad ? 'var(--red)' : ''; } }
+    function savePrices() {
+      lsSet(K_PRICES, P);
+      clearTimeout(priceTimer);
+      setStatus('Saving price list…');
+      priceTimer = setTimeout(function () {
+        if (!srv) { setStatus('Price list saved on this device only. The backend needs the Estimator update to save it to the office.', true); return; }
+        call('estimatorSavePrices', { data: JSON.stringify(P) }).then(function (d) {
+          if (d.ok) setStatus('Price list saved to the office.'); else setStatus(d.error || 'Could not save the price list.', true);
+        });
+      }, 700);
+    }
+    function loadAll() {
+      return call('estimatorGet').then(function (d) {
+        if (d && d.ok) {
+          srv = true; saved = d.estimates || [];
+          if (d.prices) { try { P = fixPrices(JSON.parse(d.prices)); lsSet(K_PRICES, P); } catch (e) {} }
+          else if (!P) P = fixPrices(lsGet(K_PRICES, null));
+          setStatus('Connected to the office. Price list and saved estimates sync across your devices.');
+        } else {
+          srv = false; saved = lsGet(K_SAVED, []);
+          P = P || fixPrices(lsGet(K_PRICES, null));
+          setStatus('Saving on this device only (' + ((d && d.error) || 'backend not updated') + '). Update the Apps Script to save to the office.', true);
+        }
+      });
+    }
+
+    // ----- calculations -----
+    function lineTotal(it) {
+      var price = (it.cat === 'Labor' && (it.price === '' || it.price == null)) ? P.labor : num(it.price);
+      var t = num(it.qty) * price;
+      if (it.cat === 'Material') t *= (1 + num(P.markup) / 100);
+      return t;
+    }
+    function calc() {
+      var c = { Labor: 0, Material: 0, Dump: 0, Travel: 0, Other: 0, hours: 0 };
+      S.items.forEach(function (it) { c[it.cat] = (c[it.cat] || 0) + lineTotal(it); if (it.cat === 'Labor') c.hours += num(it.qty); });
+      c.sub = c.Labor + c.Material + c.Dump + c.Travel + c.Other;
+      c.cont = c.sub * num(P.cont) / 100;
+      c.total = round2(c.sub + c.cont);
+      c.cash = round2(c.total * (1 - num(P.cash) / 100));
+      c.card = round2(c.total * (1 + num(P.card) / 100));
+      c.donation = round2(c.total * 0.10);
+      return c;
+    }
+
+    // ----- skeleton -----
+    function skeleton() {
+      return '' +
+      '<div class="bar sub" id="e-sub">' +
+        '<button data-sub="estimate">Estimate</button><button data-sub="takeoff">Plan takeoff</button><button data-sub="prices">Price list</button><button data-sub="quote">Quote &amp; portal</button>' +
+        '<span class="muted" style="margin-left:auto">Total: <b id="e-hdr">$0.00</b></span>' +
+      '</div>' +
+      '<div class="muted" id="e-status" style="margin-top:6px"></div>' +
+
+      '<div id="e-sec-estimate">' +
+        '<div class="banner" id="e-starter" style="background:#fbf1e3;color:#7a4a10" hidden></div>' +
+        '<section class="card"><h2>Job</h2><div class="grid2">' +
+          '<div><label>Customer</label><input id="e-j-customer" placeholder="Customer name"></div>' +
+          '<div><label>Job name</label><input id="e-j-job" placeholder="e.g. Master bath tile"></div>' +
+          '<div><label>Address</label><input id="e-j-address"></div>' +
+          '<div><label>Date</label><input id="e-j-date" type="date"></div></div>' +
+          '<label>Scope notes (shown on the quote)</label><textarea id="e-j-notes" style="min-height:50px" placeholder="What is included, what is not"></textarea></section>' +
+        '<section class="card"><h2>Quick add from a work type</h2><div class="rowf">' +
+          '<div style="flex:2 1 220px"><label>Work type</label><select id="e-qa-asm"></select></div>' +
+          '<div><label id="e-qa-lbl">Quantity</label><input id="e-qa-qty" type="number" min="0" step="any"></div>' +
+          '<div><label>Waste %</label><input id="e-qa-waste" type="number" min="0" step="any" value="10"></div>' +
+          '<div class="fix"><button class="go" id="e-qa-add">Add to estimate</button></div></div>' +
+          '<p class="muted">Adds one labor line and one material line from the Price list. Measure quantities off a plan in Plan takeoff.</p></section>' +
+        '<section class="card"><h2>Line items</h2><div class="tblwrap"><table id="e-items"><thead><tr><th style="width:105px">Type</th><th>Description</th><th style="width:80px" class="num">Qty</th><th style="width:60px">Unit</th><th style="width:95px" class="num">Unit price</th><th style="width:100px" class="num">Total</th><th style="width:36px"></th></tr></thead><tbody></tbody></table></div>' +
+          '<div class="bar" style="margin-top:10px"><button class="alt small" data-add="Labor">+ Labor</button><button class="alt small" data-add="Material">+ Material</button><button class="alt small" data-add="Dump">+ Dump</button><button class="alt small" data-add="Travel">+ Travel</button><button class="alt small" data-add="Other">+ Other</button></div>' +
+          '<p class="muted">A labor line with a blank unit price uses the labor rate from the Price list.</p></section>' +
+        '<section class="card"><h2>Totals</h2><div class="totals" id="e-totals"></div></section>' +
+        '<section class="card"><h2>Save / load</h2><div class="rowf">' +
+          '<div style="flex:2 1 200px"><label>Save this estimate as</label><input id="e-save-name" placeholder="e.g. Smith - master bath"></div>' +
+          '<div class="fix"><button class="go" id="e-save">Save</button></div><div class="fix"><button class="alt" id="e-new">New estimate</button></div></div>' +
+          '<div id="e-saved" style="margin-top:10px"></div></section>' +
+      '</div>' +
+
+      '<div id="e-sec-takeoff" hidden><section class="card"><h2>Plan takeoff</h2>' +
+        '<div class="tools"><input type="file" id="e-plan-file" accept=".pdf,image/*" style="max-width:260px">' +
+          '<span id="e-pg-ctl" hidden><button class="alt small" id="e-pg-prev">&lsaquo;</button> <span id="e-pg-lbl" class="muted">1 / 1</span> <button class="alt small" id="e-pg-next">&rsaquo;</button></span>' +
+          '<button class="alt small" id="e-z-out">&minus;</button><button class="alt small" id="e-z-in">+</button><button class="alt small" id="e-z-fit">Fit</button><span id="e-z-lbl" class="muted"></span></div>' +
+        '<div class="tools"><button class="alt small" data-tool="pan">Pan</button><button class="alt small" data-tool="cal">1. Set scale</button><button class="alt small" data-tool="len">Length (LF)</button><button class="alt small" data-tool="area">Area (SF)</button><button class="alt small" data-tool="cnt">Count (EA)</button>' +
+          '<span class="muted">|</span><button class="go small" id="e-t-finish">Finish</button><button class="alt small" id="e-t-undo">Undo point</button><button class="alt small" id="e-t-cancel">Cancel</button><span id="e-tool-hint" class="muted"></span></div>' +
+        '<div class="tk"><div>' +
+          '<div class="stage" id="e-stage"><div class="drop" id="e-drop">Choose a plan PDF or image above.<br>Set the scale, pick a tool, then click on the drawing.<br>Plans stay on this device. Nothing is uploaded.</div><div class="wrap" id="e-wrap" hidden><canvas id="e-plan"></canvas><canvas id="e-ov"></canvas></div></div>' +
+          '<div class="calbox" id="e-calbox" hidden><div class="rowf"><div style="flex:2 1 170px"><label>Real length of the line you just drew</label><input id="e-cal-dist" placeholder="e.g. 12\'6&quot; or 12.5 or 150 in"></div><div class="fix"><button class="go" id="e-cal-apply">Apply scale</button></div></div>' +
+          '<div class="rowf" style="margin-top:8px"><div style="flex:2 1 170px"><label>Or a printed scale (PDF at true size only)</label><select id="e-cal-preset"><option value="">Choose…</option><option value="0.0625">1/16" = 1\'-0"</option><option value="0.09375">3/32" = 1\'-0"</option><option value="0.125">1/8" = 1\'-0"</option><option value="0.1875">3/16" = 1\'-0"</option><option value="0.25">1/4" = 1\'-0"</option><option value="0.375">3/8" = 1\'-0"</option><option value="0.5">1/2" = 1\'-0"</option><option value="0.75">3/4" = 1\'-0"</option><option value="1">1" = 1\'-0"</option></select></div><div class="fix"><button class="alt" id="e-cal-preset-apply">Use printed scale</button></div></div>' +
+          '<p class="muted">Most reliable: click both ends of a dimension printed on the plan and type it. A PDF shrunk to letter paper makes a printed scale wrong.</p></div>' +
+        '</div><div>' +
+          '<div class="card" style="margin-top:0;padding:10px 12px"><div id="e-scale-status" class="muted">No plan loaded.</div></div>' +
+          '<label style="margin-top:0">Waste % added when sent to the estimate</label><input id="e-tk-waste" type="number" min="0" step="any" value="10">' +
+          '<div id="e-meas" style="margin-top:10px"></div><div class="muted" id="e-meas-empty">No measurements yet.</div>' +
+        '</div></div></section></div>' +
+
+      '<div id="e-sec-prices" hidden>' +
+        '<section class="card"><h2>Rates</h2><div class="grid2">' +
+          '<div><label>Labor rate ($/hr)</label><input id="e-r-labor" type="number" min="0" step="any"></div>' +
+          '<div><label>Material markup %</label><input id="e-r-markup" type="number" min="0" step="any"></div>' +
+          '<div><label>Contingency % on subtotal</label><input id="e-r-cont" type="number" min="0" step="any"></div>' +
+          '<div><label>Default dump fee ($)</label><input id="e-r-dump" type="number" min="0" step="any"></div>' +
+          '<div><label>Default travel ($)</label><input id="e-r-travel" type="number" min="0" step="any"></div>' +
+          '<div><label>Cash discount %</label><input id="e-r-cash" type="number" min="0" step="any"></div>' +
+          '<div><label>Card fee %</label><input id="e-r-card" type="number" min="0" step="any"></div>' +
+          '<div><label>Quote valid for (days)</label><input id="e-r-valid" type="number" min="1" step="1"></div></div>' +
+          '<p class="muted">Labor, dump and travel start at $150 from recent invoices. Markup and contingency start at 0.</p></section>' +
+        '<section class="card"><h2>Work types</h2><div class="banner" style="background:#fbf1e3;color:#7a4a10">Rows marked <b>starter</b> are placeholder numbers, not FLFC\'s real costs. Edit a row and the mark goes away. Check them before sending any quote.</div>' +
+          '<div class="tblwrap"><table id="e-asm"><thead><tr><th>Work type</th><th style="width:70px">Unit</th><th style="width:100px" class="num">Labor hrs / unit</th><th style="width:110px" class="num">Material $ / unit</th><th>Material description</th><th style="width:60px"></th><th style="width:36px"></th></tr></thead><tbody></tbody></table></div>' +
+          '<div class="bar" style="margin-top:10px"><button class="alt" id="e-asm-add">+ Add work type</button><button class="alt" id="e-asm-reset" style="color:var(--red);border-color:var(--red)">Reset to starter list</button></div></section>' +
+      '</div>' +
+
+      '<div id="e-sec-quote" hidden>' +
+        '<section class="card"><div class="bar"><label class="show" style="font-size:13px"><input type="checkbox" id="e-q-detail"> Show every line item</label><button class="go" id="e-q-print">Print / save as PDF</button><button class="alt" id="e-q-copy">Copy quote text</button></div></section>' +
+        '<div id="e-quote-wrap" style="margin-top:14px"><div id="e-quote" class="estQuote"></div></div>' +
+        '<section class="card"><h2>Send to a customer\'s portal job</h2>' +
+          '<p class="muted">Adds the quote lines to the job as portal line items (type Original). The customer can see them in their portal right away. The invoice total on the job then fills in from these lines. Nothing is invoiced or emailed from here.</p>' +
+          '<div class="grid2"><div><label>Customer</label><select id="e-h-cust"><option value="">Choose a customer…</option></select></div><div><label>Job</label><select id="e-h-job"><option value="">Choose a customer first</option></select></div></div>' +
+          '<div class="bar" style="margin-top:12px"><button class="alt" id="e-h-post">Add to portal job</button><button class="alt" id="e-h-open">Open this customer</button></div>' +
+          '<div class="banner" id="e-h-msg" hidden></div>' +
+          '<h3>Plain-text hand-off</h3><div class="copybox" id="e-handoff"></div><button class="alt small" id="e-h-copy" style="margin-top:6px">Copy hand-off</button></section>' +
+      '</div>';
+    }
+
+    // ----- sub-tabs -----
+    var sub = 'estimate';
+    function showSub(name) {
+      sub = name;
+      $$('#e-sub [data-sub]').forEach(function (b) { b.className = b.dataset.sub === name ? 'go small' : 'alt small'; });
+      ['estimate', 'takeoff', 'prices', 'quote'].forEach(function (n) { $e('sec-' + n).hidden = n !== name; });
+      if (name === 'estimate') renderEstimate();
+      if (name === 'takeoff') { ensurePdfJs(); renderMeas(); drawOverlay(); updateScaleStatus(); }
+      if (name === 'prices') fillPrices();
+      if (name === 'quote') { renderQuote(); loadHandoffCustomers(); }
+    }
+
+    // ----- estimate -----
+    var CATS = ['Labor', 'Material', 'Dump', 'Travel', 'Other'];
+    var JOBF = { 'j-customer': 'customer', 'j-job': 'job', 'j-address': 'address', 'j-date': 'date', 'j-notes': 'notes' };
+    function asmById(id) { return P.asm.filter(function (a) { return a.id === id; })[0]; }
+    function renderAsmSelect() {
+      var sel = $e('qa-asm'), cur0 = sel.value;
+      sel.innerHTML = P.asm.map(function (a) { return '<option value="' + a.id + '">' + esc(a.name) + ' (' + esc(a.unit) + ')</option>'; }).join('');
+      if (cur0) sel.value = cur0;
+      var a = asmById(sel.value); $e('qa-lbl').textContent = 'Quantity' + (a ? ' (' + a.unit + ')' : '');
+    }
+    function addAssembly(asmId, qty, waste, srcLabel) {
+      var a = asmById(asmId);
+      if (!a || !(qty > 0)) { banner('Enter a quantity first.', 'err'); return false; }
+      var matQty = round2(qty * (1 + waste / 100));
+      var lbl = srcLabel ? ' - ' + srcLabel : '';
+      if (num(a.hrs) > 0) S.items.push({ id: uid(), cat: 'Labor', desc: a.name + lbl + ' (' + qty + ' ' + a.unit + ')', qty: round2(qty * a.hrs), unit: 'hr', price: '', starter: !!a.starter });
+      if (num(a.mat) > 0) S.items.push({ id: uid(), cat: 'Material', desc: (a.matDesc || a.name) + lbl + (waste ? ' (+' + waste + '% waste)' : ''), qty: matQty, unit: a.unit, price: a.mat, starter: !!a.starter });
+      saveDraft(); return true;
+    }
+    function addBlank(cat) {
+      var it = { id: uid(), cat: cat, desc: '', qty: 1, unit: cat === 'Labor' ? 'hr' : 'ea', price: '' };
+      if (cat === 'Dump') { it.desc = 'Dump fee'; it.price = P.dump; }
+      if (cat === 'Travel') { it.desc = 'Travel'; it.price = P.travel; }
+      S.items.push(it); saveDraft(); renderEstimate();
+    }
+    function renderItems() {
+      var tb = $e('items').querySelector('tbody');
+      if (!S.items.length) { tb.innerHTML = '<tr><td colspan="7" class="muted" style="padding:12px">No line items yet. Use Quick add, Plan takeoff, or the + buttons below.</td></tr>'; return; }
+      tb.innerHTML = S.items.map(function (it) {
+        var ph = it.cat === 'Labor' ? ' placeholder="' + esc(P.labor) + '"' : '';
+        return '<tr data-id="' + it.id + '">' +
+          '<td><select data-f="cat">' + CATS.map(function (c) { return '<option' + (c === it.cat ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select></td>' +
+          '<td><input data-f="desc" value="' + esc(it.desc) + '">' + (it.starter ? '<span class="pill warn">starter values</span>' : '') + '</td>' +
+          '<td><input data-f="qty" type="number" step="any" class="num" value="' + esc(it.qty) + '"></td>' +
+          '<td><input data-f="unit" value="' + esc(it.unit) + '"></td>' +
+          '<td><input data-f="price" type="number" step="any" class="num" value="' + esc(it.price) + '"' + ph + '></td>' +
+          '<td class="num"><span data-lt>' + fm(lineTotal(it)) + '</span></td>' +
+          '<td><button class="small danger" data-del title="Remove">&times;</button></td></tr>';
+      }).join('');
+    }
+    function renderTotals() {
+      var c = calc(), h = '';
+      if (c.Labor) h += '<div>Labor (' + round2(c.hours) + ' hrs)</div><div>' + fm(c.Labor) + '</div>';
+      if (c.Material) h += '<div>Materials' + (num(P.markup) ? ' (incl. ' + P.markup + '% markup)' : '') + '</div><div>' + fm(c.Material) + '</div>';
+      if (c.Dump) h += '<div>Dump</div><div>' + fm(c.Dump) + '</div>';
+      if (c.Travel) h += '<div>Travel</div><div>' + fm(c.Travel) + '</div>';
+      if (c.Other) h += '<div>Other</div><div>' + fm(c.Other) + '</div>';
+      if (c.cont) h += '<div>Contingency (' + P.cont + '%)</div><div>' + fm(c.cont) + '</div>';
+      h += '<div class="big">Total (check / ACH)</div><div class="big">' + fm(c.total) + '</div>';
+      h += '<div>Cash (' + P.cash + '% off)</div><div>' + fm(c.cash) + '</div>';
+      h += '<div>Card (+' + P.card + '%)</div><div>' + fm(c.card) + '</div>';
+      h += '<div class="muted">Donation to FLF, 10% of project cost (internal)</div><div class="muted">' + fm(c.donation) + '</div>';
+      $e('totals').innerHTML = h; $e('hdr').textContent = fm(c.total);
+    }
+    function renderSaved() {
+      var b = $e('saved');
+      b.innerHTML = saved.length ? '<table><tbody>' + saved.map(function (s, i) {
+        return '<tr><td>' + esc(s.name) + ' <span class="muted">' + esc(s.updated || s.when || '') + '</span></td><td class="num" style="width:150px"><button class="alt small" data-open="' + i + '">Open</button> <button class="danger small" data-rm="' + i + '">Delete</button></td></tr>';
+      }).join('') + '</tbody></table>' : '<div class="muted">No saved estimates yet.</div>';
+    }
+    function renderEstimate() {
+      Object.keys(JOBF).forEach(function (id) { $e(id).value = S.job[JOBF[id]] || ''; });
+      renderAsmSelect(); renderItems(); renderTotals(); renderSaved();
+      var n = S.items.filter(function (i) { return i.starter; }).length, b = $e('starter');
+      b.hidden = !n;
+      b.textContent = n ? n + ' line' + (n === 1 ? ' uses' : 's use') + ' starter placeholder prices. Check them in the Price list, then edit the line (or delete and re-add it) before sending a quote.' : '';
+    }
+
+    // ----- prices -----
+    var RATES = { 'r-labor': 'labor', 'r-markup': 'markup', 'r-cont': 'cont', 'r-dump': 'dump', 'r-travel': 'travel', 'r-cash': 'cash', 'r-card': 'card', 'r-valid': 'valid' };
+    function fillPrices() {
+      Object.keys(RATES).forEach(function (id) { $e(id).value = P[RATES[id]]; });
+      $e('asm').querySelector('tbody').innerHTML = P.asm.map(function (a) {
+        return '<tr data-id="' + a.id + '"><td><input data-f="name" value="' + esc(a.name) + '"></td>' +
+          '<td><select data-f="unit">' + ['SF', 'LF', 'EA', 'HR'].map(function (u) { return '<option' + (u === a.unit ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select></td>' +
+          '<td><input data-f="hrs" type="number" step="any" class="num" value="' + a.hrs + '"></td>' +
+          '<td><input data-f="mat" type="number" step="any" class="num" value="' + a.mat + '"></td>' +
+          '<td><input data-f="matDesc" value="' + esc(a.matDesc) + '"></td>' +
+          '<td>' + (a.starter ? '<span class="pill warn" data-sp>starter</span>' : '') + '</td>' +
+          '<td><button class="small danger" data-del title="Remove">&times;</button></td></tr>';
+      }).join('');
+    }
+
+    // ----- takeoff -----
+    var T = { kind: null, pdf: null, img: null, page: 1, pages: 1, zoom: 1, w: 0, h: 0, tool: 'pan', pts: [], calPts: null, rendering: false, again: false };
+    var hover = null, pdfLoading = false, ctxP, ctxO;
+    function ensurePdfJs(cb) {
+      if (window.pdfjsLib) { if (cb) cb(); return; }
+      if (pdfLoading) return;
+      pdfLoading = true;
+      var s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      s.onload = function () { pdfLoading = false; pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; if (cb) cb(); };
+      s.onerror = function () { pdfLoading = false; };
+      document.head.appendChild(s);
+    }
+    function clearPlan() { T.kind = null; T.pdf = null; T.img = null; T.pts = []; T.calPts = null; if ($e('wrap')) { $e('wrap').hidden = true; $e('drop').hidden = false; $e('pg-ctl').hidden = true; } }
+    function calFor(p) { return S.takeoff.cal[p] || 0; }
+    function pageSize(cb) {
+      if (T.kind === 'img') { T.w = T.img.naturalWidth; T.h = T.img.naturalHeight; cb(); return; }
+      T.pdf.getPage(T.page).then(function (pg) { var vp = pg.getViewport({ scale: 1 }); T.w = vp.width; T.h = vp.height; cb(); });
+    }
+    function fitAndRender(fit) {
+      pageSize(function () { if (fit) T.zoom = Math.max(0.1, Math.min(4, ($e('stage').clientWidth - 24) / T.w)); render(); });
+    }
+    function render() {
+      if (!T.kind) return;
+      if (T.rendering) { T.again = true; return; }
+      T.rendering = true;
+      $e('drop').hidden = true; $e('wrap').hidden = false;
+      var plan = $e('plan'), ov = $e('ov'), z = T.zoom, dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var cw = Math.round(T.w * z), ch = Math.round(T.h * z);
+      ov.width = cw; ov.height = ch; ov.style.width = cw + 'px'; ov.style.height = ch + 'px';
+      plan.width = Math.round(cw * dpr); plan.height = Math.round(ch * dpr); plan.style.width = cw + 'px'; plan.style.height = ch + 'px';
+      function done() { T.rendering = false; if (T.again) { T.again = false; render(); return; } drawOverlay(); updateTkUI(); }
+      if (T.kind === 'img') { ctxP.setTransform(1, 0, 0, 1, 0, 0); ctxP.fillStyle = '#fff'; ctxP.fillRect(0, 0, plan.width, plan.height); ctxP.drawImage(T.img, 0, 0, plan.width, plan.height); done(); }
+      else T.pdf.getPage(T.page).then(function (pg) { pg.render({ canvasContext: ctxP, viewport: pg.getViewport({ scale: z * dpr }) }).promise.then(done, done); }, done);
+    }
+    function updateTkUI() { $e('pg-ctl').hidden = T.pages <= 1; $e('pg-lbl').textContent = T.page + ' / ' + T.pages; $e('z-lbl').textContent = T.kind ? Math.round(T.zoom * 100) + '%' : ''; updateScaleStatus(); }
+    function updateScaleStatus() {
+      var el0 = $e('scale-status'); if (!el0) return;
+      if (!T.kind) { el0.textContent = S.takeoff.file ? 'Plan "' + S.takeoff.file + '" is not open. Re-open the file to keep measuring. Saved measurements are kept.' : 'No plan loaded.'; return; }
+      var c = calFor(T.page), sz = T.kind === 'pdf' ? ' Sheet size: ' + (T.w / 72).toFixed(1) + ' x ' + (T.h / 72).toFixed(1) + ' in.' : '';
+      el0.innerHTML = '<b>' + esc(S.takeoff.file) + '</b>' + (T.pages > 1 ? ' page ' + T.page : '') + '<br>' + (c ? 'Scale set.' : '<span style="color:var(--red)"><b>Scale not set for this page.</b> Use "1. Set scale" first.</span>') + sz;
+    }
+    var HINTS = { pan: 'Scroll to move around.', cal: 'Click both ends of a known dimension.', len: 'Click each point along the run. Shift keeps it straight. Double-click or Finish to end.', area: 'Click each corner. Double-click or Finish to close.', cnt: 'Click each item to count. Finish when done.' };
+    function setTool(t) {
+      T.tool = t; T.pts = []; T.calPts = null; hover = null;
+      $$('#e-sec-takeoff [data-tool]').forEach(function (b) { b.className = b.dataset.tool === t ? 'go small' : 'alt small'; });
+      $e('ov').classList.toggle('pan', t === 'pan'); $e('tool-hint').textContent = HINTS[t] || ''; $e('calbox').hidden = t !== 'cal';
+      drawOverlay();
+    }
+    function ptFromEvent(e) {
+      var r = $e('ov').getBoundingClientRect(), x = (e.clientX - r.left) / T.zoom, y = (e.clientY - r.top) / T.zoom;
+      if (e.shiftKey && T.pts.length && T.tool !== 'cal' && T.tool !== 'cnt') { var l = T.pts[T.pts.length - 1]; if (Math.abs(x - l[0]) > Math.abs(y - l[1])) y = l[1]; else x = l[0]; }
+      return [x, y];
+    }
+    function measValue(m) {
+      if (m.type === 'cnt') return { v: m.pts.length, u: 'EA' };
+      var c = calFor(m.page); if (!c) return null;
+      if (m.type === 'len') { var L = 0; for (var i = 1; i < m.pts.length; i++) L += Math.hypot(m.pts[i][0] - m.pts[i - 1][0], m.pts[i][1] - m.pts[i - 1][1]); return { v: L / c, u: 'LF' }; }
+      var A = 0; for (var j = 0; j < m.pts.length; j++) { var a = m.pts[j], b = m.pts[(j + 1) % m.pts.length]; A += a[0] * b[1] - b[0] * a[1]; }
+      return { v: Math.abs(A) / 2 / (c * c), u: 'SF' };
+    }
+    var COLORS = { len: '#1f6fb4', area: '#c0392b', cnt: '#7b3fa0' };
+    function drawOverlay() {
+      var ov = $e('ov'); if (!T.kind || !ov || !ov.width) return;
+      var c = ctxO; c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, ov.width, ov.height); c.setTransform(T.zoom, 0, 0, T.zoom, 0, 0);
+      var lw = 2.5 / T.zoom, fs = 13 / T.zoom;
+      function dots(pts, col) {
+        pts.forEach(function (p, i) { c.beginPath(); c.arc(p[0], p[1], 8 / T.zoom, 0, 7); c.fillStyle = col; c.fill(); c.fillStyle = '#fff'; c.font = 'bold ' + (10 / T.zoom) + 'px sans-serif'; c.textAlign = 'center'; c.fillText(String(i + 1), p[0], p[1] + 3.5 / T.zoom); c.textAlign = 'start'; });
+      }
+      function poly(pts, color, closed, fill) {
+        if (!pts.length) return;
+        c.beginPath(); pts.forEach(function (p, i) { i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1]); }); if (closed) c.closePath();
+        if (fill) { c.fillStyle = fill; c.fill(); }
+        c.strokeStyle = color; c.lineWidth = lw; c.stroke();
+        pts.forEach(function (p) { c.beginPath(); c.arc(p[0], p[1], 3.5 / T.zoom, 0, 7); c.fillStyle = color; c.fill(); });
+      }
+      function tag(text, p, color) {
+        c.font = 'bold ' + fs + 'px sans-serif'; var w = c.measureText(text).width;
+        c.fillStyle = 'rgba(255,255,255,.92)'; c.fillRect(p[0] + 4 / T.zoom, p[1] - fs - 2 / T.zoom, w + 8 / T.zoom, fs + 6 / T.zoom);
+        c.fillStyle = color; c.fillText(text, p[0] + 8 / T.zoom, p[1] - 3 / T.zoom);
+      }
+      S.takeoff.meas.forEach(function (m) {
+        if (m.page !== T.page) return;
+        var col = COLORS[m.type], val = measValue(m);
+        if (m.type === 'cnt') dots(m.pts, col); else poly(m.pts, col, m.type === 'area', m.type === 'area' ? 'rgba(192,57,43,.18)' : null);
+        tag(m.label + (val ? ': ' + val.v.toFixed(val.u === 'EA' ? 0 : 1) + ' ' + val.u : ''), m.pts[m.pts.length - 1], col);
+      });
+      if (T.pts.length) {
+        var col2 = COLORS[T.tool] || '#000', pp = T.pts.slice();
+        if (hover && (T.tool === 'len' || T.tool === 'area')) pp.push(hover);
+        if (T.tool === 'cnt') dots(T.pts, col2); else poly(pp, col2, false, null);
+      }
+      if (T.calPts && T.calPts.length) { var cp = T.calPts.slice(); if (cp.length === 1 && hover) cp.push(hover); poly(cp, '#e08a00', false, null); }
+    }
+    function finishMeasure() {
+      var n = T.pts.length, type = T.tool;
+      if ((type === 'len' && n >= 2) || (type === 'area' && n >= 3) || (type === 'cnt' && n >= 1)) {
+        var names = { len: 'Length', area: 'Area', cnt: 'Count' };
+        var k = S.takeoff.meas.filter(function (m) { return m.type === type; }).length + 1;
+        S.takeoff.meas.push({ id: uid(), page: T.page, type: type, pts: T.pts.slice(), label: names[type] + ' ' + k });
+        T.pts = []; hover = null; saveDraft(); renderMeas(); drawOverlay();
+        if (type !== 'cnt' && !calFor(T.page)) banner('Set the scale to get feet. Values show once it is set.', 'err');
+      } else banner(type === 'area' ? 'An area needs at least 3 corners.' : type === 'len' ? 'A length needs at least 2 points.' : 'Click something to count first.', 'err');
+    }
+    function renderMeas() {
+      var box = $e('meas'), L = S.takeoff.meas;
+      $e('meas-empty').hidden = !!L.length;
+      box.innerHTML = L.map(function (m) {
+        var v = measValue(m);
+        var opts = P.asm.filter(function (a) { return v && a.unit === v.u; }).map(function (a) { return '<option value="' + a.id + '">' + esc(a.name) + '</option>'; }).join('');
+        return '<div class="meas" data-id="' + m.id + '"><div class="top"><span class="pill">' + (m.type === 'len' ? 'LF' : m.type === 'area' ? 'SF' : 'EA') + (m.page > 1 ? ' p' + m.page : '') + '</span>' +
+          '<input data-f="label" value="' + esc(m.label) + '"><span class="val">' + (v ? v.v.toFixed(v.u === 'EA' ? 0 : 1) + ' ' + v.u : 'set scale') + '</span><button class="small danger" data-del>&times;</button></div>' +
+          (v ? '<div class="add"><select data-asm>' + (opts || '<option value="">No work type with unit ' + v.u + '</option>') + '</select><button class="small go" data-send' + (opts ? '' : ' disabled') + '>Add to estimate</button></div>' : '') + '</div>';
+      }).join('');
+    }
+    function openPlan(f) {
+      var isPdf = /pdf$/i.test(f.type) || /\.pdf$/i.test(f.name);
+      if (S.takeoff.meas.length && S.takeoff.file && S.takeoff.file !== f.name) {
+        if (!confirm('This is a different plan from "' + S.takeoff.file + '". Clear the existing measurements?')) return;
+        S.takeoff = { file: f.name, cal: {}, meas: [] };
+      }
+      S.takeoff.file = f.name;
+      saveDraft(); T.pts = []; T.calPts = null; T.page = 1;
+      if (isPdf) {
+        ensurePdfJs(function () {
+          var r = new FileReader();
+          r.onload = function () {
+            pdfjsLib.getDocument({ data: new Uint8Array(r.result) }).promise.then(function (doc) { T.kind = 'pdf'; T.pdf = doc; T.pages = doc.numPages; T.page = 1; fitAndRender(true); })
+              .catch(function () { banner('Could not open that PDF.', 'err'); });
+          };
+          r.readAsArrayBuffer(f);
+        });
+        if (!window.pdfjsLib) banner('Loading the PDF reader… choose the file again if nothing appears.', 'ok');
+      } else {
+        var img = new Image();
+        img.onload = function () { T.kind = 'img'; T.img = img; T.pages = 1; T.page = 1; fitAndRender(true); };
+        img.onerror = function () { banner('Could not open that image.', 'err'); };
+        img.src = URL.createObjectURL(f);
+      }
+    }
+
+    // ----- quote -----
+    function quoteLines() {
+      var c = calc(), L = [];
+      if ($e('q-detail').checked) {
+        S.items.forEach(function (it) { L.push([it.desc || it.cat, num(it.qty) + ' ' + (it.unit || ''), round2(lineTotal(it)), it.cat]); });
+        if (c.cont) L.push(['Contingency (' + P.cont + '%)', '', round2(c.cont), 'Other']);
+      } else {
+        if (c.Labor) L.push(['Labor', round2(c.hours) + ' hrs', round2(c.Labor), 'Labor']);
+        if (c.Dump) L.push(['Dump', '', round2(c.Dump), 'Dump']);
+        if (c.Material) L.push(['Materials', '', round2(c.Material), 'Material']);
+        if (c.Travel) L.push(['Travel', '', round2(c.Travel), 'Travel']);
+        if (c.Other) L.push(['Other', '', round2(c.Other), 'Other']);
+        if (c.cont) L.push(['Contingency', '', round2(c.cont), 'Other']);
+      }
+      return L;
+    }
+    function longDate(s) { var d = s ? new Date(s + 'T12:00:00') : new Date(); return isNaN(d) ? '' : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }); }
+    function quoteNo() { return 'EST-' + ((S.job.date || '').replace(/-/g, '') || 'DRAFT'); }
+    function validUntil() { var d = S.job.date ? new Date(S.job.date + 'T12:00:00') : new Date(); d.setDate(d.getDate() + num(P.valid)); return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }); }
+    function quoteHtml() {
+      var c = calc(), L = quoteLines();
+      return '<h2 style="margin:0">Fourth Light Farm Construction, LLC</h2><div class="muted">(603) 265-1380 &middot; fourthlightfarm@gmail.com &middot; flfconstruction.com</div>' +
+        '<div style="display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;margin:14px 0"><div><b>Estimate for</b><br>' + esc(S.job.customer || '(customer)') + '<br>' + esc(S.job.address || '') + '</div>' +
+        '<div><b>' + quoteNo() + '</b><br>' + esc(longDate(S.job.date)) + '<br>Valid until ' + esc(validUntil()) + '</div></div>' +
+        (S.job.job ? '<p><b>Project:</b> ' + esc(S.job.job) + '</p>' : '') + (S.job.notes ? '<p style="white-space:pre-wrap">' + esc(S.job.notes) + '</p>' : '') +
+        '<table><thead><tr><th>Description</th><th>Qty</th><th class="r">Amount</th></tr></thead><tbody>' +
+        (L.length ? L.map(function (r) { return '<tr><td>' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td><td class="r">' + fm(r[2]) + '</td></tr>'; }).join('') : '<tr><td colspan="3" class="muted">No line items yet.</td></tr>') +
+        '<tr class="total"><td colspan="2">Total (check / ACH)</td><td class="r">' + fm(c.total) + '</td></tr></tbody></table>' +
+        '<p style="margin-top:14px"><b>Payment options</b><br>Check or ACH: ' + fm(c.total) + ' &middot; Cash: ' + fm(c.cash) + ' (' + P.cash + '% off) &middot; Card: ' + fm(c.card) + ' (+' + P.card + '% processing)</p>' +
+        '<p class="muted">Financing may be available through our partner, Enhancify. Check your rate at flfconstruction.com/pricing.html. This estimate is based on the scope described above; changes to the scope may change the price.</p>';
+    }
+    function handoffText() {
+      var c = calc();
+      return ['Customer: ' + (S.job.customer || '(not set)'), 'Job: ' + (S.job.job || '(not set)'), 'Invoice line item (one line): ' + (S.job.job || 'Services'),
+        'Invoice total, check / ACH: ' + fm(c.total), 'Cash price: ' + fm(c.cash) + '    Card price: ' + fm(c.card),
+        'Portal breakdown: Labor ' + fm(c.Labor) + ' (' + round2(c.hours) + ' hrs), Dump ' + fm(c.Dump) + ', Material ' + fm(c.Material) + ', Travel ' + fm(c.Travel) + (c.Other ? ', Other ' + fm(c.Other) : '') + (c.cont ? ', Contingency ' + fm(c.cont) : ''),
+        'Invoice note: Itemized costs are in the customer portal.'].join('\n');
+    }
+    function renderQuote() { $e('quote').innerHTML = quoteHtml(); $e('handoff').textContent = handoffText(); $e('hdr').textContent = fm(calc().total); }
+
+    // ----- hand-off to a portal job -----
+    var hoCusts = null, hoJobs = {};
+    function hmsg(text, kind) { var b = $e('h-msg'); b.textContent = text || ''; b.className = 'banner ' + (kind === 'ok' ? 'ok' : 'err'); b.hidden = !text; }
+    function loadHandoffCustomers() {
+      if (hoCusts) return;
+      call('getCustomers').then(function (d) {
+        if (!d.ok) { hmsg(d.error || 'Could not load customers.', 'err'); return; }
+        hoCusts = d.customers;
+        var sel = $e('h-cust'); sel.innerHTML = '<option value="">Choose a customer…</option>';
+        d.customers.forEach(function (c) { var o = el('option', c.name + (c.active ? '' : ' (inactive)')); o.value = c.id; sel.appendChild(o); });
+      });
+    }
+    function loadHandoffJobs(id) {
+      var js = $e('h-job'); js.innerHTML = '<option value="">Loading…</option>';
+      if (!id) { js.innerHTML = '<option value="">Choose a customer first</option>'; return; }
+      call('getCustomer', { id: id }).then(function (d) {
+        js.innerHTML = '';
+        if (!d.ok) { hmsg(d.error || 'Could not load jobs.', 'err'); return; }
+        hoJobs[id] = d.jobs;
+        d.jobs.forEach(function (j) { var o = el('option', j.name || j.id); o.value = j.id; js.appendChild(o); });
+        if (!d.jobs.length) js.innerHTML = '<option value="">No jobs yet</option>';
+      });
+    }
+    function postToPortal() {
+      var cid = $e('h-cust').value, jid = $e('h-job').value;
+      if (!cid || !jid) { hmsg('Choose the customer and the job first.', 'err'); return; }
+      var L = quoteLines().filter(function (r) { return r[2] > 0; });
+      if (!L.length) { hmsg('The estimate has no costs to post.', 'err'); return; }
+      var btn = $e('h-post'); btn.disabled = true; hmsg('Adding ' + L.length + ' line item' + (L.length === 1 ? '' : 's') + '…', 'ok');
+      var done = 0, label = S.job.job ? S.job.job + ' - ' : '';
+      (function next() {
+        if (done >= L.length) {
+          btn.disabled = false;
+          S.posted = { cid: cid, jid: jid, when: new Date().toISOString().slice(0, 10), n: L.length }; saveDraft(); resetPostBtn();
+          hmsg('Added ' + L.length + ' line item' + (L.length === 1 ? '' : 's') + ' to the job (' + fm(calc().total) + ' total, check/ACH). Open the customer to invoice from them.', 'ok');
+          return;
+        }
+        var r = L[done];
+        call('addLineItem', { id: cid, jobId: jid, category: r[3], description: label + r[0] + (r[1] && r[1].indexOf('hrs') > 0 ? ' (' + r[1] + ')' : ''), type: 'Original', amount: r[2] }).then(function (d) {
+          if (!d.ok) { btn.disabled = false; hmsg((done ? 'Stopped after ' + done + ' of ' + L.length + ' lines. ' : '') + (d.error || 'Could not add the line.'), 'err'); return; }
+          done++; next();
+        });
+      })();
+    }
+    var resetPostBtn = function () {};
+
+    // ----- wiring -----
+    function wire() {
+      var root = $('estTab');
+      $e('sub').addEventListener('click', function (e) { if (e.target.dataset.sub) showSub(e.target.dataset.sub); });
+      Object.keys(JOBF).forEach(function (id) { $e(id).addEventListener('input', function (e) { S.job[JOBF[id]] = e.target.value; saveDraft(); }); });
+      $e('qa-asm').addEventListener('change', renderAsmSelect);
+      $e('qa-add').addEventListener('click', function () {
+        if (addAssembly($e('qa-asm').value, num($e('qa-qty').value), num($e('qa-waste').value))) { $e('qa-qty').value = ''; renderEstimate(); toast('Added.'); }
+      });
+      $$('[data-add]', root).forEach(function (b) { b.addEventListener('click', function () { addBlank(b.dataset.add); }); });
+      $e('items').addEventListener('input', function (e) {
+        var tr = e.target.closest('tr[data-id]'); if (!tr || !e.target.dataset.f) return;
+        var it = S.items.filter(function (x) { return x.id === tr.dataset.id; })[0]; if (!it) return;
+        it[e.target.dataset.f] = e.target.value;
+        if (e.target.dataset.f === 'cat') { saveDraft(); renderEstimate(); return; }
+        tr.querySelector('[data-lt]').textContent = fm(lineTotal(it)); saveDraft(); renderTotals();
+      });
+      $e('items').addEventListener('click', function (e) {
+        if (!e.target.closest('[data-del]')) return;
+        var id = e.target.closest('tr').dataset.id; S.items = S.items.filter(function (x) { return x.id !== id; }); saveDraft(); renderEstimate();
+      });
+      // save / load
+      $e('saved').addEventListener('click', function (e) {
+        var i = e.target.dataset.open != null ? +e.target.dataset.open : (e.target.dataset.rm != null ? +e.target.dataset.rm : -1);
+        if (i < 0 || !saved[i]) return;
+        var item = saved[i];
+        if (e.target.dataset.open != null) {
+          if (srv) call('estimatorLoad', { estimateId: item.id }).then(function (d) {
+            if (!d.ok) { banner(d.error, 'err'); return; }
+            try { S = fixState(JSON.parse(d.data)); S.estId = item.id; } catch (x) { banner('That estimate could not be read.', 'err'); return; }
+            clearPlan(); saveDraft(); renderEstimate(); toast('Opened "' + item.name + '".');
+          });
+          else { S = fixState(JSON.parse(JSON.stringify(item.state))); S.estId = item.id; clearPlan(); saveDraft(); renderEstimate(); toast('Opened "' + item.name + '".'); }
+        } else if (confirm('Delete the saved estimate "' + item.name + '"? This cannot be undone.')) {
+          if (srv) call('estimatorDelete', { estimateId: item.id }).then(function (d) { if (!d.ok) { banner(d.error, 'err'); return; } saved.splice(i, 1); renderSaved(); });
+          else { saved.splice(i, 1); lsSet(K_SAVED, saved); renderSaved(); }
+        }
+      });
+      $e('save').addEventListener('click', function () {
+        var name = $e('save-name').value.trim() || [S.job.customer, S.job.job].filter(Boolean).join(' - ') || 'Untitled';
+        if (srv) {
+          call('estimatorSave', { estimateId: S.estId || '', name: name, data: JSON.stringify(S) }).then(function (d) {
+            if (!d.ok) { banner(d.error || 'Could not save.', 'err'); return; }
+            S.estId = d.id; saveDraft(); toast('Saved "' + name + '" to the office.');
+            call('estimatorGet').then(function (g) { if (g.ok) { saved = g.estimates; renderSaved(); } });
+          });
+        } else {
+          if (!S.estId) S.estId = uid();
+          saved = saved.filter(function (s) { return s.id !== S.estId; });
+          saved.unshift({ id: S.estId, name: name, updated: new Date().toLocaleString(), state: JSON.parse(JSON.stringify(S)) });
+          lsSet(K_SAVED, saved); saveDraft(); renderSaved(); toast('Saved "' + name + '" on this device.');
+        }
+      });
+      $e('new').addEventListener('click', function () {
+        if (S.items.length && !confirm('Start a new estimate? Unsaved changes will be lost.')) return;
+        S = freshState(); saveDraft(); clearPlan(); $e('save-name').value = ''; renderEstimate(); renderMeas(); toast('New estimate.');
+      });
+      // prices
+      Object.keys(RATES).forEach(function (id) { $e(id).addEventListener('input', function (e) { P[RATES[id]] = num(e.target.value); savePrices(); }); });
+      $e('asm').addEventListener('input', function (e) {
+        var tr = e.target.closest('tr[data-id]'); if (!tr || !e.target.dataset.f) return;
+        var a = asmById(tr.dataset.id); if (!a) return;
+        var f = e.target.dataset.f; a[f] = (f === 'hrs' || f === 'mat') ? num(e.target.value) : e.target.value;
+        if (a.starter) { a.starter = false; var sp = tr.querySelector('[data-sp]'); if (sp) sp.remove(); }
+        savePrices();
+      });
+      $e('asm').addEventListener('click', function (e) {
+        if (!e.target.closest('[data-del]')) return;
+        var id = e.target.closest('tr').dataset.id; P.asm = P.asm.filter(function (a) { return a.id !== id; }); savePrices(); fillPrices();
+      });
+      $e('asm-add').addEventListener('click', function () { P.asm.push({ id: uid(), name: 'New work type', unit: 'SF', hrs: 0, mat: 0, matDesc: '', starter: false }); savePrices(); fillPrices(); });
+      $e('asm-reset').addEventListener('click', function () {
+        if (!confirm('Replace the work type list with the starter list? Your edits to work types will be lost.')) return;
+        P.asm = defaultPrices().asm; savePrices(); fillPrices(); toast('Reset to the starter list.');
+      });
+      // takeoff
+      ctxP = $e('plan').getContext('2d'); ctxO = $e('ov').getContext('2d');
+      $e('plan-file').addEventListener('change', function (e) { var f = e.target.files[0]; if (f) openPlan(f); e.target.value = ''; });
+      $e('pg-prev').addEventListener('click', function () { if (T.page > 1) { T.page--; T.pts = []; fitAndRender(false); } });
+      $e('pg-next').addEventListener('click', function () { if (T.page < T.pages) { T.page++; T.pts = []; fitAndRender(false); } });
+      function setZoom(z) { T.zoom = Math.max(0.1, Math.min(6, z)); render(); }
+      $e('z-in').addEventListener('click', function () { setZoom(T.zoom * 1.25); });
+      $e('z-out').addEventListener('click', function () { setZoom(T.zoom / 1.25); });
+      $e('z-fit').addEventListener('click', function () { if (T.kind) fitAndRender(true); });
+      $$('#e-sec-takeoff [data-tool]').forEach(function (b) { b.addEventListener('click', function () { setTool(b.dataset.tool); }); });
+      var ov = $e('ov');
+      ov.addEventListener('click', function (e) {
+        if (!T.kind || T.tool === 'pan') return;
+        var p = ptFromEvent(e);
+        if (T.tool === 'cal') {
+          if (!T.calPts || T.calPts.length >= 2) T.calPts = [];
+          T.calPts.push(p);
+          $e('tool-hint').textContent = T.calPts.length === 1 ? 'Now click the other end.' : 'Type the real length below and press Apply scale.';
+          if (T.calPts.length === 2) setTimeout(function () { $e('cal-dist').focus(); }, 0);
+        } else {
+          if (T.tool !== 'cnt' && T.pts.length) { var l = T.pts[T.pts.length - 1]; if (Math.hypot(l[0] - p[0], l[1] - p[1]) * T.zoom < 3) return; }
+          T.pts.push(p);
+        }
+        drawOverlay();
+      });
+      ov.addEventListener('dblclick', function (e) { if (T.tool === 'len' || T.tool === 'area') { e.preventDefault(); finishMeasure(); } });
+      ov.addEventListener('mousemove', function (e) { if (T.tool === 'len' || T.tool === 'area' || (T.tool === 'cal' && T.calPts && T.calPts.length === 1)) { hover = ptFromEvent(e); drawOverlay(); } });
+      ov.addEventListener('mouseleave', function () { hover = null; drawOverlay(); });
+      $e('cal-apply').addEventListener('click', function () {
+        if (!T.calPts || T.calPts.length < 2) { banner('Click two points on the plan first.', 'err'); return; }
+        var ft = parseLen($e('cal-dist').value);
+        if (!(ft > 0)) { banner('Type a length like 12\'6" or 12.5', 'err'); return; }
+        var d = Math.hypot(T.calPts[0][0] - T.calPts[1][0], T.calPts[0][1] - T.calPts[1][1]);
+        S.takeoff.cal[T.page] = d / ft; saveDraft(); $e('cal-dist').value = ''; T.calPts = null;
+        updateTkUI(); renderMeas(); toast('Scale set.'); setTool('len');
+      });
+      $e('cal-preset-apply').addEventListener('click', function () {
+        var inch = num($e('cal-preset').value);
+        if (!inch) { banner('Choose a printed scale first.', 'err'); return; }
+        if (T.kind !== 'pdf') { banner('Printed scales only work on PDFs. Use two points and a known dimension.', 'err'); return; }
+        S.takeoff.cal[T.page] = inch * 72; saveDraft(); updateTkUI(); renderMeas(); toast('Scale set from the printed scale.'); setTool('len');
+      });
+      $e('t-finish').addEventListener('click', finishMeasure);
+      $e('t-undo').addEventListener('click', function () { if (T.tool === 'cal' && T.calPts) T.calPts.pop(); else T.pts.pop(); drawOverlay(); });
+      $e('t-cancel').addEventListener('click', function () { T.pts = []; T.calPts = null; hover = null; drawOverlay(); });
+      document.addEventListener('keydown', function (e) {
+        if (!built || $('estTab').hidden || $e('sec-takeoff').hidden) return;
+        var tg = e.target.tagName; if (tg === 'INPUT' || tg === 'SELECT' || tg === 'TEXTAREA') return;
+        if (e.key === 'Enter') finishMeasure();
+        if (e.key === 'Escape') { T.pts = []; T.calPts = null; drawOverlay(); }
+        if (e.key === 'Backspace') { T.pts.pop(); drawOverlay(); e.preventDefault(); }
+      });
+      $e('meas').addEventListener('input', function (e) {
+        if (e.target.dataset.f !== 'label') return;
+        var m = S.takeoff.meas.filter(function (x) { return x.id === e.target.closest('.meas').dataset.id; })[0]; if (m) { m.label = e.target.value; saveDraft(); drawOverlay(); }
+      });
+      $e('meas').addEventListener('click', function (e) {
+        var card = e.target.closest('.meas'); if (!card) return;
+        var m = S.takeoff.meas.filter(function (x) { return x.id === card.dataset.id; })[0]; if (!m) return;
+        if (e.target.closest('[data-del]')) { S.takeoff.meas = S.takeoff.meas.filter(function (x) { return x !== m; }); saveDraft(); renderMeas(); drawOverlay(); }
+        if (e.target.closest('[data-send]')) {
+          var v = measValue(m), asm = card.querySelector('[data-asm]').value;
+          if (v && addAssembly(asm, round2(v.v), num($e('tk-waste').value), m.label)) toast('Added to the estimate: ' + round2(v.v) + ' ' + v.u);
+        }
+      });
+      // quote
+      $e('q-detail').addEventListener('change', renderQuote);
+      $e('q-print').addEventListener('click', function () {
+        var pr = $('printRoot'); pr.innerHTML = '<div class="estQuote" style="font-family:Segoe UI,Arial,sans-serif;color:#111;padding:10px">' + quoteHtml() + '</div>';
+        document.body.classList.add('estprint');
+        var clean = function () { document.body.classList.remove('estprint'); pr.innerHTML = ''; window.removeEventListener('afterprint', clean); };
+        window.addEventListener('afterprint', clean); window.print();
+      });
+      function copy(text, btn) { copyText(text, btn); }
+      $e('h-copy').addEventListener('click', function () { copy(handoffText(), this); });
+      $e('q-copy').addEventListener('click', function () {
+        var c = calc();
+        copy('Fourth Light Farm Construction, LLC - Estimate ' + quoteNo() + '\n' + (S.job.customer || '') + (S.job.job ? ' - ' + S.job.job : '') + '\n\n' +
+          quoteLines().map(function (r) { return r[0] + (r[1] ? ' (' + r[1] + ')' : '') + ': ' + fm(r[2]); }).join('\n') +
+          '\n\nTotal (check / ACH): ' + fm(c.total) + '\nCash: ' + fm(c.cash) + '\nCard: ' + fm(c.card) + '\nValid until ' + validUntil(), this);
+      });
+      $e('h-cust').addEventListener('change', function () { hmsg(''); loadHandoffJobs(this.value); });
+      resetPostBtn = twoTap($e('h-post'), 'Add to portal job', 'Tap again: the customer will see these', function () { postToPortal(); });
+      $e('h-post').addEventListener('click', function () {
+        if (S.posted && S.posted.cid === $e('h-cust').value && S.posted.jid === $e('h-job').value) hmsg('Heads up: this estimate was already added to this job on ' + S.posted.when + '. Adding again will duplicate the lines.', 'err');
+      });
+      $e('h-open').addEventListener('click', function () {
+        var cid = $e('h-cust').value, jid = $e('h-job').value;
+        if (!cid) { hmsg('Choose a customer first.', 'err'); return; }
+        $('cust').value = cid; if (jid) openJobs[jid] = true;
+        loadCustomer(cid).then(function () { showTab('cust'); });
+      });
+    }
+
+    function build() {
+      $('estTab').innerHTML = skeleton();
+      built = true; wire(); setTool('pan');
+    }
+    window.estimatorTab = function () {
+      if (!S) S = fixState(lsGet(K_DRAFT, null));
+      if (!built) { P = P || fixPrices(lsGet(K_PRICES, null)); build(); showSub('estimate'); }
+      loadAll().then(function () {
+        if (!built || $('estTab').hidden) return;
+        renderSaved(); renderAsmSelect(); renderTotals(); renderItems();
+        if (sub === 'prices') fillPrices();
+        if (sub === 'takeoff') renderMeas();
+        if (sub === 'quote') renderQuote();
+      });
+    };
+    window.estimatorReset = function () { built = false; srv = null; P = null; S = null; saved = []; hoCusts = null; hoJobs = {}; clearTimeout(priceTimer); $('estTab').innerHTML = ''; clearPlan(); };
+  })();
 
   (function init() {
     var saved = safeStore(false);
