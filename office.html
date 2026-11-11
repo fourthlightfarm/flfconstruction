@@ -1526,6 +1526,97 @@
       return NaN;
     }
 
+    // ----- framing engine -----
+    /* ---------- framing engine (same code in estimator.html and flfc/office.html) ---------- */
+    var FR_SIZES = ['2x4', '2x6', '2x8', '2x10', '2x12'];
+    var FR_STOCK = [8, 10, 12, 14, 16, 20];
+    var FR_KINDS = { wall: 'Wall (studs)', floor: 'Floor joists', ceiling: 'Ceiling joists', roof: 'Roof rafters' };
+    function defaultFrame() { return { starter: true, price: { '2x4': 0.90, '2x6': 1.40, '2x8': 1.90, '2x10': 2.60, '2x12': 3.40 }, hrs: 0.10, fasten: 5 }; }
+    function fixFrame(f) {
+      var d = defaultFrame();
+      if (!f || typeof f !== 'object') return d;
+      if (!f.price || typeof f.price !== 'object') f.price = d.price;
+      FR_SIZES.forEach(function (s) { if (f.price[s] == null) f.price[s] = d.price[s]; });
+      if (f.hrs == null) f.hrs = d.hrs;
+      if (f.fasten == null) f.fasten = d.fasten;
+      if (f.starter == null) f.starter = true;
+      return f;
+    }
+    function frStock(ft) {
+      for (var i = 0; i < FR_STOCK.length; i++) if (FR_STOCK[i] >= ft - 1e-9) return { len: FR_STOCK[i], over: false };
+      return { len: FR_STOCK[FR_STOCK.length - 1], over: true };
+    }
+    function frCeil(x) { return Math.max(0, Math.ceil(x - 1e-9)); }
+    // o: kind, run (ft), oc (in), size, waste (%), longLen (ft, plates/rim/ridge stock),
+    //    wall: height, corners, tees, topPlates (1|2), openings, openW (ft), headerSize
+    //    floor/ceiling: span (ft), extra, rim (bool), blockRows
+    //    roof: span (ft, building width), pitch (rise per 12), overhang (in), sides (1|2), extra
+    function framingCalc(o, fr) {
+      fr = fixFrame(fr);
+      var kind = o.kind || 'wall', oc = num(o.oc) || 16, run = num(o.run), size = o.size || '2x4';
+      var waste = num(o.waste), longLen = num(o.longLen) || 16, rows = [], notes = [];
+      function row(what, sz, len, pcs, spaced) { if (pcs > 0) rows.push({ what: what, size: sz, len: len, pcs: pcs, spaced: !!spaced }); }
+      var spaced = frCeil(run * 12 / oc) + 1;
+      if (!(run > 0)) return { rows: [], notes: ['Enter the length of the run.'], pcs: 0, buy: 0, lumber: 0, fasten: 0, hrs: 0, items: [], ok: false };
+      if (kind === 'wall') {
+        var height = num(o.height) || 8, tops = num(o.topPlates) === 1 ? 1 : 2, plates = tops + 1;
+        var need = height - plates * 1.5 / 12, st = frStock(need);
+        if (st.over) notes.push('Wall is taller than 20 ft studs. Price the studs by hand.');
+        var corners = Math.max(0, num(o.corners)), tees = Math.max(0, num(o.tees)), op = Math.max(0, Math.round(num(o.openings))), ow = num(o.openW) || 3;
+        var studs = spaced + 2 * corners + 2 * tees;
+        if (op) studs += op * (4 - Math.floor(ow * 12 / oc));
+        studs = Math.max(0, studs);
+        row('studs, kings, jacks', size, st.len, studs, true);
+        if (op) {
+          var hs = frStock(ow + 0.25);
+          if (hs.over) notes.push('A header that long needs a splice or an LVL. Price it by hand.');
+          row('headers (doubled)', o.headerSize || size, hs.len, op * 2, false);
+        }
+        row('plates (' + plates + ' high)', size, longLen, frCeil(run * plates / longLen), false);
+        notes.push('Stud length: ' + st.len + "' stock (wall height " + height + "', " + plates + ' plates). Cripples, sills and sheathing are not included.');
+      } else if (kind === 'floor' || kind === 'ceiling') {
+        var span = num(o.span), extra = Math.max(0, Math.round(num(o.extra)));
+        if (!(span > 0)) return { rows: [], notes: ['Enter the span (the length of each joist).'], pcs: 0, buy: 0, lumber: 0, fasten: 0, hrs: 0, items: [], ok: false };
+        var js = frStock(span);
+        if (js.over) notes.push('Span is longer than 20 ft. Joists need a splice or an engineered joist.');
+        row(kind === 'floor' ? 'floor joists' : 'ceiling joists', size, js.len, spaced + extra, true);
+        if (kind === 'floor' && o.rim) row('rim / band board', size, longLen, frCeil(2 * run / longLen), false);
+        var br = Math.max(0, Math.round(num(o.blockRows)));
+        if (br) row('blocking / bridging', size, longLen, frCeil(br * run / longLen), false);
+        notes.push('Joist length ' + js.len + "' for a " + span + "' span. Subfloor, hangers and ledgers are not included.");
+      } else {
+        var rsp = num(o.span), sides = num(o.sides) === 1 ? 1 : 2, pitch = num(o.pitch) || 0, ovh = num(o.overhang);
+        if (!(rsp > 0)) return { rows: [], notes: ['Enter the building width (the span).'], pcs: 0, buy: 0, lumber: 0, fasten: 0, hrs: 0, items: [], ok: false };
+        var horiz = rsp / sides + ovh / 12, rlen = horiz * Math.sqrt(1 + Math.pow(pitch / 12, 2)), rs = frStock(rlen);
+        if (rs.over) notes.push('Rafters are longer than 20 ft. Price them by hand or use trusses.');
+        row('rafters', size, rs.len, (spaced + Math.max(0, Math.round(num(o.extra)))) * sides, true);
+        if (sides === 2) {
+          var ri = Math.min(FR_SIZES.indexOf(size) + 1, FR_SIZES.length - 1);
+          row('ridge board', FR_SIZES[ri < 0 ? 0 : ri], longLen, frCeil(run / longLen), false);
+        }
+        notes.push('Rafter length ' + (Math.round(rlen * 100) / 100) + ' ft along the slope (cut from ' + rs.len + "'). Ridge is one size deeper. Collar ties, ceiling joists, sheathing are not included.");
+      }
+      var pcs = 0, buy = 0, lumber = 0;
+      rows.forEach(function (r) {
+        r.buy = frCeil(r.pcs * (1 + waste / 100));
+        r.each = Math.round(num(fr.price[r.size]) * r.len * 100) / 100;
+        r.cost = Math.round(r.buy * r.each * 100) / 100;
+        pcs += r.pcs; buy += r.buy; lumber += r.cost;
+      });
+      var fasten = Math.round(lumber * num(fr.fasten)) / 100, hrs = Math.round(pcs * num(fr.hrs) * 100) / 100;
+      return { rows: rows, notes: notes, pcs: pcs, buy: buy, lumber: Math.round(lumber * 100) / 100, fasten: fasten, hrs: hrs, ok: true, oc: oc, waste: waste, kind: kind };
+    }
+    // Turn a result into estimate line items (Material rows, a fasteners line, one Labor line).
+    function frameItems(res, label, fr, newId) {
+      var items = [], lbl = label ? ' - ' + label : '', st = !!fixFrame(fr).starter;
+      res.rows.forEach(function (r) {
+        items.push({ id: newId(), cat: 'Material', desc: r.size + " x " + r.len + "' " + r.what + (r.spaced ? ' @ ' + res.oc + '" OC' : '') + lbl + (res.waste ? ' (+' + res.waste + '% waste)' : ''), qty: r.buy, unit: 'pc', price: r.each, starter: st });
+      });
+      if (res.fasten > 0) items.push({ id: newId(), cat: 'Material', desc: 'Nails, screws, hardware (' + fixFrame(fr).fasten + '% of lumber)' + lbl, qty: 1, unit: 'ls', price: res.fasten, starter: st });
+      if (res.hrs > 0) items.push({ id: newId(), cat: 'Labor', desc: 'Framing labor' + lbl + ' (' + res.pcs + ' pieces)', qty: res.hrs, unit: 'hr', price: '', starter: st });
+      return items;
+    }
+
     // ----- data -----
     // STARTER numbers are placeholders, not FLFC's real costs. They show a warning until edited.
     var STARTER = [
@@ -1542,7 +1633,7 @@
       ['Door / window install', 'EA', 2.00, 250.00, 'Unit, trim, flashing, hardware'],
       ['Architectural drafting', 'HR', 1.00, 0.00, '']
     ].map(function (r) { return { id: uid(), name: r[0], unit: r[1], hrs: r[2], mat: r[3], matDesc: r[4], starter: true }; });
-    function defaultPrices() { return { labor: 150, markup: 0, cont: 0, dump: 150, travel: 150, cash: 10, card: 3, valid: 30, asm: STARTER.map(function (a) { return Object.assign({}, a); }) }; }
+    function defaultPrices() { return { labor: 150, markup: 0, cont: 0, dump: 150, travel: 150, cash: 10, card: 3, valid: 30, frame: defaultFrame(), asm: STARTER.map(function (a) { return Object.assign({}, a); }) }; }
     function freshState() { return { estId: '', job: { customer: '', job: '', address: '', date: new Date().toISOString().slice(0, 10), notes: '' }, items: [], takeoff: { file: '', cal: {}, meas: [] }, posted: null }; }
     function fixState(s) {
       if (!s || !Array.isArray(s.items)) return freshState();
@@ -1554,6 +1645,7 @@
       var d = defaultPrices();
       if (!p || typeof p !== 'object' || !Array.isArray(p.asm)) return d;
       Object.keys(d).forEach(function (k) { if (p[k] == null) p[k] = d[k]; });
+      p.frame = fixFrame(p.frame);
       return p;
     }
 
@@ -1629,6 +1721,36 @@
           '<div><label>Waste %</label><input id="e-qa-waste" type="number" min="0" step="any" value="10"></div>' +
           '<div class="fix"><button class="go" id="e-qa-add">Add to estimate</button></div></div>' +
           '<p class="muted">Adds one labor line and one material line from the Price list. Measure quantities off a plan in Plan takeoff.</p></section>' +
+        '<section class="card" id="e-fr-card"><h2>Framing calculator</h2>' +
+          '<div class="rowf"><div style="flex:1.4 1 170px"><label>What are you framing</label><select id="e-fr-kind"></select></div>' +
+          '<div style="flex:1.4 1 150px"><label>Label (optional)</label><input id="e-fr-label" placeholder="e.g. North wall"></div>' +
+          '<div><label id="e-fr-runlbl">Wall length (LF)</label><input id="e-fr-run" type="number" min="0" step="any" placeholder="0"></div>' +
+          '<div><label>Spacing</label><select id="e-fr-oc"></select></div>' +
+          '<div><label>Lumber size</label><select id="e-fr-size"></select></div>' +
+          '<div><label>Waste %</label><input id="e-fr-waste" type="number" min="0" step="any" value="10"></div></div>' +
+          '<div class="rowf" data-fk="wall" style="margin-top:8px">' +
+            '<div><label>Wall height (ft)</label><input id="e-fr-height" type="number" min="0" step="any" value="8"></div>' +
+            '<div><label>Corners</label><input id="e-fr-corners" type="number" min="0" step="1" value="0"></div>' +
+            '<div><label>T-walls</label><input id="e-fr-tees" type="number" min="0" step="1" value="0"></div>' +
+            '<div><label>Top plate</label><select id="e-fr-plates"></select></div>' +
+            '<div><label>Openings (doors, windows)</label><input id="e-fr-openings" type="number" min="0" step="1" value="0"></div>' +
+            '<div><label>Avg opening width (ft)</label><input id="e-fr-openw" type="number" min="0" step="any" value="3"></div>' +
+            '<div><label>Header size</label><select id="e-fr-hdr"></select></div></div>' +
+          '<div class="rowf" data-fk="floor ceiling" style="margin-top:8px">' +
+            '<div><label>Joist span (ft)</label><input id="e-fr-span" type="number" min="0" step="any" placeholder="e.g. 12"></div>' +
+            '<div><label>Extra joists (doubles)</label><input id="e-fr-extra" type="number" min="0" step="1" value="0"></div>' +
+            '<div><label>Rows of blocking</label><input id="e-fr-block" type="number" min="0" step="1" value="0"></div>' +
+            '<div data-fk="floor" class="fix" style="padding-bottom:8px"><label style="display:inline"><input type="checkbox" id="e-fr-rim" style="width:auto" checked> Rim board both sides</label></div></div>' +
+          '<div class="rowf" data-fk="roof" style="margin-top:8px">' +
+            '<div><label>Building width / span (ft)</label><input id="e-fr-rspan" type="number" min="0" step="any" placeholder="e.g. 24"></div>' +
+            '<div><label>Pitch (rise per 12)</label><input id="e-fr-pitch" type="number" min="0" step="any" value="6"></div>' +
+            '<div><label>Eave overhang (in)</label><input id="e-fr-ovh" type="number" min="0" step="any" value="12"></div>' +
+            '<div><label>Roof shape</label><select id="e-fr-sides"></select></div>' +
+            '<div><label>Extra rafters</label><input id="e-fr-rextra" type="number" min="0" step="1" value="0"></div></div>' +
+          '<div class="rowf" style="margin-top:8px"><div><label>Long stock for plates, rim, ridge</label><select id="e-fr-long"></select></div></div>' +
+          '<div id="e-fr-out" style="margin-top:12px"></div>' +
+          '<div class="bar" style="margin-top:10px"><button class="go" id="e-fr-add">Add framing to estimate</button></div>' +
+          '<p class="muted">Counts members at the spacing you pick (length x 12 / OC, plus one), adds corners, openings, plates and headers, then rounds up to whole boards. Spacing is a spec you choose (or read from the plan notes). In Plan takeoff, use Frame it on a measured length to fill the length in here.</p></section>' +
         '<section class="card"><h2>Line items</h2><div class="tblwrap"><table id="e-items"><thead><tr><th style="width:105px">Type</th><th>Description</th><th style="width:80px" class="num">Qty</th><th style="width:60px">Unit</th><th style="width:95px" class="num">Unit price</th><th style="width:100px" class="num">Total</th><th style="width:36px"></th></tr></thead><tbody></tbody></table></div>' +
           '<div class="bar" style="margin-top:10px"><button class="alt small" data-add="Labor">+ Labor</button><button class="alt small" data-add="Material">+ Material</button><button class="alt small" data-add="Dump">+ Dump</button><button class="alt small" data-add="Travel">+ Travel</button><button class="alt small" data-add="Other">+ Other</button></div>' +
           '<p class="muted">A labor line with a blank unit price uses the labor rate from the Price list.</p></section>' +
@@ -1667,6 +1789,16 @@
           '<div><label>Card fee %</label><input id="e-r-card" type="number" min="0" step="any"></div>' +
           '<div><label>Quote valid for (days)</label><input id="e-r-valid" type="number" min="1" step="1"></div></div>' +
           '<p class="muted">Labor, dump and travel start at $150 from recent invoices. Markup and contingency start at 0.</p></section>' +
+        '<section class="card" id="e-fp-card"><h2>Framing lumber</h2><div class="banner" id="e-fp-banner" style="background:#fbf1e3;color:#7a4a10" hidden>These are <b>starter</b> placeholder prices, not the real FLFC costs. Edit any number and this mark goes away.</div>' +
+          '<div class="grid2">' +
+            '<div><label>2x4 ($ per LF)</label><input id="e-fp-2x4" type="number" min="0" step="any"></div>' +
+            '<div><label>2x6 ($ per LF)</label><input id="e-fp-2x6" type="number" min="0" step="any"></div>' +
+            '<div><label>2x8 ($ per LF)</label><input id="e-fp-2x8" type="number" min="0" step="any"></div>' +
+            '<div><label>2x10 ($ per LF)</label><input id="e-fp-2x10" type="number" min="0" step="any"></div>' +
+            '<div><label>2x12 ($ per LF)</label><input id="e-fp-2x12" type="number" min="0" step="any"></div>' +
+            '<div><label>Labor hrs per piece</label><input id="e-fp-hrs" type="number" min="0" step="any"></div>' +
+            '<div><label>Hardware % of lumber</label><input id="e-fp-fasten" type="number" min="0" step="any"></div></div>' +
+          '<p class="muted">Used by the Framing calculator. A board costs its price per LF times its length (a 2x4 x 8 ft at $0.90 per LF is $7.20). Labor is hours per piece cut and set.</p></section>' +
         '<section class="card"><h2>Work types</h2><div class="banner" style="background:#fbf1e3;color:#7a4a10">Rows marked <b>starter</b> are placeholder numbers, not FLFC\'s real costs. Edit a row and the mark goes away. Check them before sending any quote.</div>' +
           '<div class="tblwrap"><table id="e-asm"><thead><tr><th>Work type</th><th style="width:70px">Unit</th><th style="width:100px" class="num">Labor hrs / unit</th><th style="width:110px" class="num">Material $ / unit</th><th>Material description</th><th style="width:60px"></th><th style="width:36px"></th></tr></thead><tbody></tbody></table></div>' +
           '<div class="bar" style="margin-top:10px"><button class="alt" id="e-asm-add">+ Add work type</button><button class="alt" id="e-asm-reset" style="color:var(--red);border-color:var(--red)">Reset to starter list</button></div></section>' +
@@ -1758,16 +1890,79 @@
     }
     function renderEstimate() {
       Object.keys(JOBF).forEach(function (id) { $e(id).value = S.job[JOBF[id]] || ''; });
-      renderAsmSelect(); renderItems(); renderTotals(); renderSaved();
+      renderAsmSelect(); renderItems(); renderTotals(); renderSaved(); frInit(); frRender();
       var n = S.items.filter(function (i) { return i.starter; }).length, b = $e('starter');
       b.hidden = !n;
       b.textContent = n ? n + ' line' + (n === 1 ? ' uses' : 's use') + ' starter placeholder prices. Check them in the Price list, then edit the line (or delete and re-add it) before sending a quote.' : '';
+    }
+
+    // ----- framing calculator (Estimate tab) -----
+    var frBuilt = false;
+    function fe(n) { return $e('fr-' + n); }
+    function frOpt(list, cur) { return list.map(function (x) { return '<option value="' + x[0] + '"' + (String(x[0]) === String(cur) ? ' selected' : '') + '>' + x[1] + '</option>'; }).join(''); }
+    function frInit() {
+      if (frBuilt || !fe('kind')) return; frBuilt = true;
+      fe('kind').innerHTML = frOpt(Object.keys(FR_KINDS).map(function (k) { return [k, FR_KINDS[k]]; }), 'wall');
+      fe('oc').innerHTML = frOpt([[12, '12" OC'], [16, '16" OC'], [18, '18" OC'], [24, '24" OC']], 16);
+      fe('size').innerHTML = frOpt(FR_SIZES.map(function (s) { return [s, s]; }), '2x4');
+      fe('hdr').innerHTML = frOpt(['2x6', '2x8', '2x10', '2x12'].map(function (s) { return [s, s]; }), '2x8');
+      fe('plates').innerHTML = frOpt([[2, 'Double top plate (3 plates)'], [1, 'Single top plate (2 plates)']], 2);
+      fe('sides').innerHTML = frOpt([[2, 'Gable (two sides)'], [1, 'Shed (one side)']], 2);
+      fe('long').innerHTML = frOpt(FR_STOCK.map(function (s) { return [s, s + ' ft']; }), 16);
+      $$('#e-fr-card input, #e-fr-card select').forEach(function (el) { el.addEventListener('input', frRender); el.addEventListener('change', frRender); });
+      fe('add').addEventListener('click', frAdd);
+      fe('out').addEventListener('click', function (e) { var g = e.target.closest('[data-gosub]'); if (g) { e.preventDefault(); showSub(g.dataset.gosub); } });
+    }
+    function frRead() {
+      var k = fe('kind').value, r = k === 'roof';
+      return { kind: k, run: fe('run').value, oc: fe('oc').value, size: fe('size').value, waste: fe('waste').value, longLen: fe('long').value,
+        height: fe('height').value, corners: fe('corners').value, tees: fe('tees').value, topPlates: fe('plates').value, openings: fe('openings').value, openW: fe('openw').value, headerSize: fe('hdr').value,
+        span: r ? fe('rspan').value : fe('span').value, extra: r ? fe('rextra').value : fe('extra').value, rim: fe('rim').checked, blockRows: fe('block').value,
+        pitch: fe('pitch').value, overhang: fe('ovh').value, sides: fe('sides').value };
+    }
+    function frRender() {
+      if (!frBuilt || !fe('kind')) return;
+      var k = fe('kind').value;
+      $$('#e-fr-card [data-fk]').forEach(function (e) { e.hidden = e.dataset.fk.split(' ').indexOf(k) < 0; });
+      fe('runlbl').textContent = k === 'wall' ? 'Wall length (LF)' : k === 'roof' ? 'Building length along the ridge (LF)' : 'Length the joists are spaced along (LF)';
+      var res = framingCalc(frRead(), P.frame), h = '';
+      if (!res.ok) h = '<div class="muted">' + esc(res.notes[0]) + '</div>';
+      else {
+        h = '<div class="tblwrap"><table><thead><tr><th>Piece</th><th class="num">Need</th><th class="num">Buy (+waste)</th><th class="num">Each</th><th class="num">Cost</th></tr></thead><tbody>' +
+          res.rows.map(function (r) { return '<tr><td>' + esc(r.size + ' x ' + r.len + "' " + r.what + (r.spaced ? ' @ ' + res.oc + '" OC' : '')) + '</td><td class="num">' + r.pcs + '</td><td class="num">' + r.buy + '</td><td class="num">' + fm(r.each) + '</td><td class="num">' + fm(r.cost) + '</td></tr>'; }).join('') +
+          '</tbody></table></div>' +
+          '<div style="margin-top:6px">Lumber <b>' + fm(res.lumber) + '</b> + hardware ' + fm(res.fasten) + ' + labor ' + res.hrs + ' hrs (' + fm(res.hrs * num(P.labor)) + ' at the labor rate). <b>' + res.pcs + ' pieces</b> (' + res.buy + ' to buy).</div>';
+        res.notes.forEach(function (n) { h += '<div class="muted">' + esc(n) + '</div>'; });
+      }
+      if (P.frame.starter) h += '<div style="margin-top:6px"><span class="pill warn">starter prices</span> <span class="muted">Lumber prices and labor per piece are placeholders. Set the real ones in the <a href="#" data-gosub="prices">Price list</a>.</span></div>';
+      fe('out').innerHTML = h;
+      fe('add').disabled = !res.ok;
+    }
+    function frAdd() {
+      var res = framingCalc(frRead(), P.frame);
+      if (!res.ok) { banner(res.notes[0], 'err'); return; }
+      frameItems(res, fe('label').value.trim(), P.frame, uid).forEach(function (it) { S.items.push(it); });
+      saveDraft(); renderEstimate(); toast('Framing added to the estimate.');
+    }
+    function fillFrame() {
+      FR_SIZES.forEach(function (s) { $e('fp-' + s).value = P.frame.price[s]; });
+      $e('fp-hrs').value = P.frame.hrs; $e('fp-fasten').value = P.frame.fasten;
+      $e('fp-banner').hidden = !P.frame.starter;
+    }
+    function frPriceEdit(e) {
+      var id = e.target.id.replace('e-fp-', '');
+      if (FR_SIZES.indexOf(id) >= 0) P.frame.price[id] = num(e.target.value);
+      else if (id === 'hrs') P.frame.hrs = num(e.target.value);
+      else if (id === 'fasten') P.frame.fasten = num(e.target.value);
+      else return;
+      P.frame.starter = false; $e('fp-banner').hidden = true; savePrices(); frRender();
     }
 
     // ----- prices -----
     var RATES = { 'r-labor': 'labor', 'r-markup': 'markup', 'r-cont': 'cont', 'r-dump': 'dump', 'r-travel': 'travel', 'r-cash': 'cash', 'r-card': 'card', 'r-valid': 'valid' };
     function fillPrices() {
       Object.keys(RATES).forEach(function (id) { $e(id).value = P[RATES[id]]; });
+      fillFrame();
       $e('asm').querySelector('tbody').innerHTML = P.asm.map(function (a) {
         return '<tr data-id="' + a.id + '"><td><input data-f="name" value="' + esc(a.name) + '"></td>' +
           '<td><select data-f="unit">' + ['SF', 'LF', 'EA', 'HR'].map(function (u) { return '<option' + (u === a.unit ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select></td>' +
@@ -1891,7 +2086,7 @@
         var opts = P.asm.filter(function (a) { return v && a.unit === v.u; }).map(function (a) { return '<option value="' + a.id + '">' + esc(a.name) + '</option>'; }).join('');
         return '<div class="meas" data-id="' + m.id + '"><div class="top"><span class="pill">' + (m.type === 'len' ? 'LF' : m.type === 'area' ? 'SF' : 'EA') + (m.page > 1 ? ' p' + m.page : '') + '</span>' +
           '<input data-f="label" value="' + esc(m.label) + '"><span class="val">' + (v ? v.v.toFixed(v.u === 'EA' ? 0 : 1) + ' ' + v.u : 'set scale') + '</span><button class="small danger" data-del>&times;</button></div>' +
-          (v ? '<div class="add"><select data-asm>' + (opts || '<option value="">No work type with unit ' + v.u + '</option>') + '</select><button class="small go" data-send' + (opts ? '' : ' disabled') + '>Add to estimate</button></div>' : '') + '</div>';
+          (v ? '<div class="add"><select data-asm>' + (opts || '<option value="">No work type with unit ' + v.u + '</option>') + '</select><button class="small go" data-send' + (opts ? '' : ' disabled') + '>Add to estimate</button>' + (m.type === 'len' ? '<button class="small alt" data-frame title="Fill the Framing calculator with this length">Frame it</button>' : '') + '</div>' : '') + '</div>';
       }).join('');
     }
     function openPlan(f) {
@@ -2064,6 +2259,7 @@
         S = freshState(); saveDraft(); clearPlan(); $e('save-name').value = ''; renderEstimate(); renderMeas(); toast('New estimate.');
       });
       // prices
+      $e('fp-card').addEventListener('input', frPriceEdit);
       Object.keys(RATES).forEach(function (id) { $e(id).addEventListener('input', function (e) { P[RATES[id]] = num(e.target.value); savePrices(); }); });
       $e('asm').addEventListener('input', function (e) {
         var tr = e.target.closest('tr[data-id]'); if (!tr || !e.target.dataset.f) return;
@@ -2145,7 +2341,11 @@
           var v = measValue(m), asm = card.querySelector('[data-asm]').value;
           if (v && addAssembly(asm, round2(v.v), num($e('tk-waste').value), m.label)) toast('Added to the estimate: ' + round2(v.v) + ' ' + v.u);
         }
-      });
+        if (e.target.closest('[data-frame]')) {
+          var fv = measValue(m); if (!fv) return;
+          showSub('estimate'); frInit(); fe('run').value = round2(fv.v); fe('label').value = m.label; frRender();
+          $e('fr-card').scrollIntoView({ block: 'start' }); toast('Length filled in. Pick the spacing and size.');
+        }      });
       // quote
       $e('q-detail').addEventListener('change', renderQuote);
       $e('q-print').addEventListener('click', function () {
@@ -2177,14 +2377,14 @@
 
     function build() {
       $('estTab').innerHTML = skeleton();
-      built = true; wire(); setTool('pan');
+      built = true; frBuilt = false; wire(); setTool('pan');
     }
     window.estimatorTab = function () {
       if (!S) S = fixState(lsGet(K_DRAFT, null));
       if (!built) { P = P || fixPrices(lsGet(K_PRICES, null)); build(); showSub('estimate'); }
       loadAll().then(function () {
         if (!built || $('estTab').hidden) return;
-        renderSaved(); renderAsmSelect(); renderTotals(); renderItems();
+        renderSaved(); renderAsmSelect(); renderTotals(); renderItems(); frRender();
         if (sub === 'prices') fillPrices();
         if (sub === 'takeoff') renderMeas();
         if (sub === 'quote') renderQuote();
