@@ -67,6 +67,14 @@
     .lightbox { position:fixed; top:0; right:0; bottom:0; left:0; background:rgba(20,14,10,.88); z-index:50; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:16px; }
     .lightbox img { max-width:100%; max-height:78vh; border-radius:6px; background:#fff; }
     .lightbox .nm { color:#fff; font-weight:600; overflow-wrap:anywhere; text-align:center; }
+    /* Overhead tab */
+    #ohTab table { width:100%; border-collapse:collapse; }
+    #ohTab th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); padding:3px 4px; }
+    #ohTab td { padding:3px; vertical-align:middle; }
+    #ohTab td input, #ohTab td select { padding:5px 6px; font-size:14px; }
+    #ohTab td select { min-width:92px; }
+    #ohTab .num { text-align:right; }
+    #ohTab .stats { grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); }
     /* Estimator tab */
     #estTab .sub { margin-top:14px; }
     #estTab table { width:100%; border-collapse:collapse; }
@@ -134,6 +142,7 @@
       <button id="tabCust" class="go">Customers</button>
       <button id="tabOut" class="alt">Outreach</button>
       <button id="tabEst" class="alt">Estimator</button>
+      <button id="tabOh" class="alt">Overhead</button>
     </div>
     <div id="custTab">
     <div class="card bar">
@@ -175,6 +184,7 @@
     </div>
     <div id="outTab" hidden></div>
     <div id="estTab" hidden></div>
+    <div id="ohTab" hidden></div>
   </div>
 </main>
 <div id="printRoot"></div>
@@ -1247,17 +1257,20 @@
   }
 
   function showTab(which) {
-    $('custTab').hidden = which !== 'cust'; $('outTab').hidden = which !== 'out'; $('estTab').hidden = which !== 'est';
+    $('custTab').hidden = which !== 'cust'; $('outTab').hidden = which !== 'out'; $('estTab').hidden = which !== 'est'; $('ohTab').hidden = which !== 'oh';
     $('tabCust').className = which === 'cust' ? 'go' : 'alt';
     $('tabOut').className = which === 'out' ? 'go' : 'alt';
     $('tabEst').className = which === 'est' ? 'go' : 'alt';
+    $('tabOh').className = which === 'oh' ? 'go' : 'alt';
     banner('');
     if (which === 'out') outreachTab();
     if (which === 'est') estimatorTab();
+    if (which === 'oh') overheadTab();
   }
   $('tabCust').addEventListener('click', function () { showTab('cust'); });
   $('tabOut').addEventListener('click', function () { showTab('out'); });
   $('tabEst').addEventListener('click', function () { showTab('est'); });
+  $('tabOh').addEventListener('click', function () { showTab('oh'); });
 
   function outreachTab() {
     var root = $('outTab');
@@ -1497,6 +1510,136 @@
     paintCampaigns(d.campaigns, d.lastRun, d.scheduled);
     refreshCount();
   }
+
+  // ---------- Overhead tab: yearly overhead -> cost per billable hour, markup, and a one-job price ----------
+  // Private: numbers stay in this browser only (nothing is sent to the backend).
+  (function () {
+    var KEY = 'flfc_office_overhead_v1', built = false, S = null;
+    var FREQ = { w: ['Weekly', 52], m: ['Monthly', 12], q: ['Quarterly', 4], y: ['Yearly', 1] };
+    function starter() {
+      return { starter: true, rows: [
+        { n: 'Liability insurance', a: 250, f: 'm' }, { n: 'Truck payment / insurance', a: 600, f: 'm' },
+        { n: 'Fuel not billed to jobs', a: 150, f: 'm' }, { n: 'Tools and equipment', a: 2400, f: 'y' },
+        { n: 'Phone and internet', a: 120, f: 'm' }, { n: 'Software and website', a: 80, f: 'm' },
+        { n: 'Accounting and licenses', a: 1200, f: 'y' }, { n: 'Advertising', a: 100, f: 'm' }],
+        people: 2, hpw: 40, wks: 46, util: 70, wage: 40, rate: 150, profit: 10, rev: 250000, jhrs: 40, jmat: 3000, joth: 300 };
+    }
+    function load() { try { var s = JSON.parse(localStorage.getItem(KEY)); if (s && s.rows) return s; } catch (e) {} return starter(); }
+    function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+    function g(id) { return document.getElementById('oh-' + id); }
+    function n(v) { v = parseFloat(v); return isFinite(v) ? v : 0; }
+    function usd(v) { return (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    function usd0(v) { return (v < 0 ? '-$' : '$') + Math.abs(Math.round(v)).toLocaleString('en-US'); }
+    function pct(v) { return (Math.round(v * 10) / 10) + '%'; }
+    function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+    function calc(s) {
+      var annual = s.rows.reduce(function (t, r) { return t + n(r.a) * (FREQ[r.f] ? FREQ[r.f][1] : 1); }, 0);
+      var hours = n(s.people) * n(s.hpw) * n(s.wks) * n(s.util) / 100;
+      var o = { annual: annual, hours: hours, ok: hours > 0 };
+      o.perHr = hours > 0 ? annual / hours : 0;
+      o.costHr = n(s.wage) + o.perHr;
+      var p = n(s.profit) / 100;
+      o.targetRate = p < 1 ? o.costHr / (1 - p) : 0;
+      o.profitHr = n(s.rate) - o.costHr;
+      o.marginAtRate = n(s.rate) > 0 ? o.profitHr / n(s.rate) * 100 : 0;
+      var rev = n(s.rev), ov = rev > 0 ? annual / rev : 0;
+      o.ovPctRev = ov * 100;
+      var d = 1 - ov - p;
+      o.markup = rev > 0 && d > 0 ? (ov + p) / d * 100 : null;
+      var jh = n(s.jhrs);
+      o.job = { labor: jh * n(s.wage), ov: jh * o.perHr, direct: n(s.jmat) + n(s.joth) };
+      o.job.cost = o.job.labor + o.job.ov + o.job.direct;
+      o.job.price = p < 1 ? o.job.cost / (1 - p) : 0;
+      o.job.profit = o.job.price - o.job.cost;
+      return o;
+    }
+    window.__ohCalc = calc;
+
+    function build() {
+      var root = document.getElementById('ohTab');
+      root.innerHTML =
+        '<div class="banner" id="oh-starter" style="background:#fbf1e3;color:#7a4a10" hidden><span class="pill warn">starter numbers</span> These costs are placeholders, not the real FLFC figures. Change any number and this mark goes away. Saved on this device only.</div>' +
+        '<section class="card"><h2>1. Yearly overhead</h2><p class="muted" style="margin-top:0">Costs that are not tied to one job.</p>' +
+          '<div style="overflow-x:auto"><table><thead><tr><th>Cost</th><th class="num">Amount ($)</th><th>How often</th><th class="num">Per year</th><th></th></tr></thead><tbody id="oh-rows"></tbody>' +
+          '<tfoot><tr><td><b>Total overhead</b></td><td></td><td></td><td class="num"><b id="oh-total">$0</b></td><td></td></tr></tfoot></table></div>' +
+          '<div class="bar" style="margin-top:10px"><button class="alt small" id="oh-add">+ Add a cost</button><button class="alt small" id="oh-reset">Reset to starter list</button></div>' +
+          '<p class="muted">Include insurance, truck and fuel not billed to a job, tools, phone, software, accounting, advertising, licenses. Leave out materials, subcontractors and crew wages you charge straight to a job.</p></section>' +
+        '<section class="card"><h2>2. Crew hours and goals</h2><div class="grid2">' +
+          '<div><label>People who bill hours</label><input id="oh-people" type="number" min="0" step="any"></div>' +
+          '<div><label>Hours per week (each)</label><input id="oh-hpw" type="number" min="0" step="any"></div>' +
+          '<div><label>Weeks worked per year</label><input id="oh-wks" type="number" min="0" max="52" step="any"></div>' +
+          '<div><label>Billable % of hours</label><input id="oh-util" type="number" min="1" max="100" step="any"></div>' +
+          '<div><label>Wage + burden paid ($/hr)</label><input id="oh-wage" type="number" min="0" step="any"></div>' +
+          '<div><label>Rate you bill ($/hr)</label><input id="oh-rate" type="number" min="0" step="any"></div>' +
+          '<div><label>Target profit (% of price)</label><input id="oh-profit" type="number" min="0" max="90" step="any"></div>' +
+          '<div><label>Yearly revenue goal ($)</label><input id="oh-rev" type="number" min="0" step="any"></div></div>' +
+          '<p class="muted">Billable % is the share of paid hours you can charge for. Driving, quoting, buying material and weather days are not billable, so 60 to 75 is common. Burden is payroll tax, workers comp and benefits on top of wage.</p></section>' +
+        '<section class="card"><h2>3. Results</h2><div class="stats" id="oh-results"></div><div id="oh-msg"></div><p class="muted" id="oh-how"></p></section>' +
+        '<section class="card"><h2>4. Price one job</h2><div class="grid2">' +
+          '<div><label>Labor hours on the job</label><input id="oh-jhrs" type="number" min="0" step="any"></div>' +
+          '<div><label>Material and sub cost ($)</label><input id="oh-jmat" type="number" min="0" step="any"></div>' +
+          '<div><label>Dump, travel, other direct ($)</label><input id="oh-joth" type="number" min="0" step="any"></div></div>' +
+          '<div class="stats" id="oh-job"></div>' +
+          '<p class="muted">Overhead is added by labor hour. The price covers crew, materials, overhead and your target profit. Compare it to what you quoted.</p></section>';
+      wire(); fill(); drawRows(); render();
+    }
+    var MAP = { people: 'people', hpw: 'hpw', wks: 'wks', util: 'util', wage: 'wage', rate: 'rate', profit: 'profit', rev: 'rev', jhrs: 'jhrs', jmat: 'jmat', joth: 'joth' };
+    function fill() { Object.keys(MAP).forEach(function (k) { g(k).value = S[MAP[k]]; }); }
+    function drawRows() {
+      g('rows').innerHTML = S.rows.map(function (r, i) {
+        var opts = Object.keys(FREQ).map(function (k) { return '<option value="' + k + '"' + (r.f === k ? ' selected' : '') + '>' + FREQ[k][0] + '</option>'; }).join('');
+        return '<tr data-i="' + i + '"><td><input data-f="n" value="' + esc(r.n) + '"></td><td><input class="num" data-f="a" type="number" min="0" step="any" value="' + esc(r.a) + '"></td>' +
+          '<td><select data-f="f">' + opts + '</select></td><td class="num" id="oh-y' + i + '"></td><td><button class="danger small" data-del title="Remove">x</button></td></tr>';
+      }).join('');
+    }
+    function changed() { S.starter = false; save(); render(); }
+    function wire() {
+      Object.keys(MAP).forEach(function (k) { g(k).addEventListener('input', function () { S[MAP[k]] = g(k).value; changed(); }); });
+      g('rows').addEventListener('input', function (e) {
+        var tr = e.target.closest('tr'); if (!tr) return;
+        var r = S.rows[+tr.dataset.i], f = e.target.dataset.f; if (!r || !f) return; r[f] = e.target.value; changed();
+      });
+      g('rows').addEventListener('click', function (e) {
+        if (!e.target.closest('[data-del]')) return;
+        S.rows.splice(+e.target.closest('tr').dataset.i, 1); S.starter = false; save(); drawRows(); render();
+      });
+      g('add').addEventListener('click', function () { S.rows.push({ n: '', a: 0, f: 'm' }); S.starter = false; save(); drawRows(); render(); });
+      g('reset').addEventListener('click', function () { S = starter(); save(); fill(); drawRows(); render(); });
+    }
+    function tile(v, label, note, color) { return '<div class="stat"><b' + (color ? ' style="color:' + color + '"' : '') + '>' + v + '</b><span>' + label + (note ? '<br>' + note : '') + '</span></div>'; }
+    function render() {
+      var o = calc(S);
+      S.rows.forEach(function (r, i) { var c = g('y' + i); if (c) c.textContent = usd0(n(r.a) * (FREQ[r.f] ? FREQ[r.f][1] : 1)); });
+      g('total').textContent = usd0(o.annual);
+      g('starter').hidden = !S.starter;
+      if (!o.ok) { g('results').innerHTML = ''; g('job').innerHTML = ''; g('how').textContent = ''; g('msg').innerHTML = '<div class="banner err">Enter people, hours per week, weeks per year and a billable % above zero to get results.</div>'; return; }
+      var h = '', msg = '';
+      h += tile(usd0(o.annual), 'Overhead per year', usd(o.annual / 12) + ' a month');
+      h += tile(Math.round(o.hours).toLocaleString('en-US'), 'Billable hours per year', n(S.people) + ' x ' + n(S.hpw) + ' hrs x ' + n(S.wks) + ' wks x ' + n(S.util) + '%');
+      h += tile(usd(o.perHr), 'Overhead per billable hour');
+      h += tile(usd(o.costHr), 'Cost per billed hour', usd(n(S.wage)) + ' wage + overhead');
+      h += tile(usd(o.targetRate), 'Rate for ' + pct(n(S.profit)) + ' profit', 'cost / (1 - profit %)');
+      h += tile(usd(o.profitHr) + '/hr', 'Profit at your ' + usd(n(S.rate)) + ' rate', pct(o.marginAtRate) + ' of what you bill', o.profitHr >= 0 && o.marginAtRate >= n(S.profit) ? 'var(--ok)' : 'var(--red)');
+      if (n(S.rev) > 0) {
+        h += tile(pct(o.ovPctRev), 'Overhead as % of revenue', 'at ' + usd0(n(S.rev)) + ' a year');
+        if (o.markup == null) msg = '<div class="banner err">Overhead plus profit is 100% or more of the revenue goal, so no markup can cover it. Raise the revenue goal or lower the costs or profit target.</div>';
+        else h += tile(pct(o.markup), 'Markup on direct costs', 'covers overhead + profit');
+      }
+      if (o.profitHr < 0) msg += '<div class="banner err">At ' + usd(n(S.rate)) + ' an hour you lose ' + usd(-o.profitHr) + ' on every billed hour. The rate must be at least ' + usd(o.costHr) + ' just to break even.</div>';
+      g('results').innerHTML = h; g('msg').innerHTML = msg;
+      g('how').textContent = 'Markup on direct cost = (overhead % + profit %) / (1 - overhead % - profit %), with overhead % = yearly overhead / revenue goal. Margin and markup differ: a 10% profit margin on price needs about an 11% markup on cost.';
+      var j = o.job, jt = '';
+      jt += tile(usd(j.labor), 'Crew labor', n(S.jhrs) + ' hrs x ' + usd(n(S.wage)));
+      jt += tile(usd(j.ov), 'Overhead share', n(S.jhrs) + ' hrs x ' + usd(o.perHr));
+      jt += tile(usd(j.direct), 'Materials and other');
+      jt += tile(usd(j.cost), 'Total cost');
+      jt += tile(usd(j.price), 'Price to quote', pct(n(S.profit)) + ' profit on price', 'var(--ok)');
+      jt += tile(usd(j.profit), 'Profit on the job', pct(j.price > 0 ? j.profit / j.price * 100 : 0) + ' of price');
+      g('job').innerHTML = jt;
+    }
+    window.overheadTab = function () { if (!built) { S = load(); built = true; build(); } };
+  })();
 
   // ---------- Estimator tab: estimate builder, plan takeoff, quote, hand-off to a portal job ----------
   // Price list and saved estimates live in the Estimator sheet (private, behind the admin key).
