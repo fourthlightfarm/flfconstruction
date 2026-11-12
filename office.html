@@ -1511,7 +1511,7 @@
     refreshCount();
   }
 
-  // ---------- Overhead tab: yearly overhead -> cost per billable hour, markup, and a one-job price ----------
+  // ---------- Overhead tab: yearly overhead -> cost per billable hour, weekly minimum and goal, markup, one-job price, PDF report ----------
   // Private: numbers stay in this browser only (nothing is sent to the backend).
   (function () {
     var KEY = 'flfc_office_overhead_v1', built = false, S = null;
@@ -1522,33 +1522,51 @@
         { n: 'Fuel not billed to jobs', a: 150, f: 'm' }, { n: 'Tools and equipment', a: 2400, f: 'y' },
         { n: 'Phone and internet', a: 120, f: 'm' }, { n: 'Software and website', a: 80, f: 'm' },
         { n: 'Accounting and licenses', a: 1200, f: 'y' }, { n: 'Advertising', a: 100, f: 'm' }],
-        people: 2, hpw: 40, wks: 46, util: 70, wage: 40, rate: 150, profit: 10, rev: 250000, jhrs: 40, jmat: 3000, joth: 300 };
+        people: 2, hpw: 40, wks: 46, util: 70, wage: 40, rate: 150, profit: 10, goal: 5000, jhrs: 40, jmat: 3000, joth: 300 };
     }
-    function load() { try { var s = JSON.parse(localStorage.getItem(KEY)); if (s && s.rows) return s; } catch (e) {} return starter(); }
+    function load() {
+      try {
+        var s = JSON.parse(localStorage.getItem(KEY));
+        if (s && s.rows) { if (s.goal == null) s.goal = (n(s.rev) > 0 && n(s.wks) > 0) ? Math.round(n(s.rev) / n(s.wks)) : 5000; return s; }
+      } catch (e) {}
+      return starter();
+    }
     function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
     function g(id) { return document.getElementById('oh-' + id); }
     function n(v) { v = parseFloat(v); return isFinite(v) ? v : 0; }
     function usd(v) { return (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
     function usd0(v) { return (v < 0 ? '-$' : '$') + Math.abs(Math.round(v)).toLocaleString('en-US'); }
     function pct(v) { return (Math.round(v * 10) / 10) + '%'; }
+    function r1(v) { return (Math.round(v * 10) / 10).toLocaleString('en-US'); }
     function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
     function calc(s) {
       var annual = s.rows.reduce(function (t, r) { return t + n(r.a) * (FREQ[r.f] ? FREQ[r.f][1] : 1); }, 0);
-      var hours = n(s.people) * n(s.hpw) * n(s.wks) * n(s.util) / 100;
+      var paid = n(s.people) * n(s.hpw) * n(s.wks);
+      var hours = paid * n(s.util) / 100;
       var o = { annual: annual, hours: hours, ok: hours > 0 };
       o.perHr = hours > 0 ? annual / hours : 0;
-      o.costHr = n(s.wage) + o.perHr;
+      o.wageHr = hours > 0 ? n(s.wage) * paid / hours : 0;     // pay for non-billable hours is spread over the billable ones
+      o.costHr = o.wageHr + o.perHr;
       var p = n(s.profit) / 100;
       o.targetRate = p < 1 ? o.costHr / (1 - p) : 0;
       o.profitHr = n(s.rate) - o.costHr;
       o.marginAtRate = n(s.rate) > 0 ? o.profitHr / n(s.rate) * 100 : 0;
-      var rev = n(s.rev), ov = rev > 0 ? annual / rev : 0;
+      // weekly
+      o.weekHrs = n(s.people) * n(s.hpw) * n(s.util) / 100;     // billable hours the crew has in a week
+      o.weekMin = n(s.wks) > 0 ? annual / n(s.wks) + n(s.people) * n(s.hpw) * n(s.wage) : 0;   // overhead + payroll, zero profit
+      o.weekGoal = n(s.goal);
+      o.weekProfit = o.weekGoal - o.weekMin;
+      o.hrsMin = n(s.rate) > 0 ? o.weekMin / n(s.rate) : 0;
+      o.hrsGoal = n(s.rate) > 0 ? o.weekGoal / n(s.rate) : 0;
+      o.capacity = o.weekHrs * n(s.rate);
+      // markup on direct costs, from the goal
+      var rev = o.weekGoal * n(s.wks), ov = rev > 0 ? annual / rev : 0;
       o.ovPctRev = ov * 100;
       var d = 1 - ov - p;
       o.markup = rev > 0 && d > 0 ? (ov + p) / d * 100 : null;
       var jh = n(s.jhrs);
-      o.job = { labor: jh * n(s.wage), ov: jh * o.perHr, direct: n(s.jmat) + n(s.joth) };
+      o.job = { labor: jh * o.wageHr, ov: jh * o.perHr, direct: n(s.jmat) + n(s.joth) };
       o.job.cost = o.job.labor + o.job.ov + o.job.direct;
       o.job.price = p < 1 ? o.job.cost / (1 - p) : 0;
       o.job.profit = o.job.price - o.job.cost;
@@ -1559,6 +1577,7 @@
     function build() {
       var root = document.getElementById('ohTab');
       root.innerHTML =
+        '<div class="bar" style="margin-top:14px"><button id="oh-print" class="go">Print / save as PDF</button><span class="muted">Makes a clean one-page report you can save as a PDF and share.</span></div>' +
         '<div class="banner" id="oh-starter" style="background:#fbf1e3;color:#7a4a10" hidden><span class="pill warn">starter numbers</span> These costs are placeholders, not the real FLFC figures. Change any number and this mark goes away. Saved on this device only.</div>' +
         '<section class="card"><h2>1. Yearly overhead</h2><p class="muted" style="margin-top:0">Costs that are not tied to one job.</p>' +
           '<div style="overflow-x:auto"><table><thead><tr><th>Cost</th><th class="num">Amount ($)</th><th>How often</th><th class="num">Per year</th><th></th></tr></thead><tbody id="oh-rows"></tbody>' +
@@ -1570,12 +1589,12 @@
           '<div><label>Hours per week (each)</label><input id="oh-hpw" type="number" min="0" step="any"></div>' +
           '<div><label>Weeks worked per year</label><input id="oh-wks" type="number" min="0" max="52" step="any"></div>' +
           '<div><label>Billable % of hours</label><input id="oh-util" type="number" min="1" max="100" step="any"></div>' +
-          '<div><label>Wage + burden paid ($/hr)</label><input id="oh-wage" type="number" min="0" step="any"></div>' +
+          '<div><label>Wage + burden paid ($ per paid hour)</label><input id="oh-wage" type="number" min="0" step="any"></div>' +
           '<div><label>Rate you bill ($/hr)</label><input id="oh-rate" type="number" min="0" step="any"></div>' +
           '<div><label>Target profit (% of price)</label><input id="oh-profit" type="number" min="0" max="90" step="any"></div>' +
-          '<div><label>Yearly revenue goal ($)</label><input id="oh-rev" type="number" min="0" step="any"></div></div>' +
-          '<p class="muted">Billable % is the share of paid hours you can charge for. Driving, quoting, buying material and weather days are not billable, so 60 to 75 is common. Burden is payroll tax, workers comp and benefits on top of wage.</p></section>' +
-        '<section class="card"><h2>3. Results</h2><div class="stats" id="oh-results"></div><div id="oh-msg"></div><p class="muted" id="oh-how"></p></section>' +
+          '<div><label>Weekly goal ($ billed per week)</label><input id="oh-goal" type="number" min="0" step="any"></div></div>' +
+          '<p class="muted">Billable % is the share of paid hours you can charge for. Driving, quoting, buying material and weather days are not billable, so 60 to 75 is common. Burden is payroll tax, workers comp and benefits on top of wage. The weekly minimum is figured for you below.</p></section>' +
+        '<section class="card"><h2>3. Results</h2><h3 style="margin-top:4px">Weekly</h3><div class="stats" id="oh-week"></div><h3>Per hour and markup</h3><div class="stats" id="oh-results"></div><div id="oh-msg"></div><p class="muted" id="oh-how"></p></section>' +
         '<section class="card"><h2>4. Price one job</h2><div class="grid2">' +
           '<div><label>Labor hours on the job</label><input id="oh-jhrs" type="number" min="0" step="any"></div>' +
           '<div><label>Material and sub cost ($)</label><input id="oh-jmat" type="number" min="0" step="any"></div>' +
@@ -1584,8 +1603,8 @@
           '<p class="muted">Overhead is added by labor hour. The price covers crew, materials, overhead and your target profit. Compare it to what you quoted.</p></section>';
       wire(); fill(); drawRows(); render();
     }
-    var MAP = { people: 'people', hpw: 'hpw', wks: 'wks', util: 'util', wage: 'wage', rate: 'rate', profit: 'profit', rev: 'rev', jhrs: 'jhrs', jmat: 'jmat', joth: 'joth' };
-    function fill() { Object.keys(MAP).forEach(function (k) { g(k).value = S[MAP[k]]; }); }
+    var KEYS = ['people', 'hpw', 'wks', 'util', 'wage', 'rate', 'profit', 'goal', 'jhrs', 'jmat', 'joth'];
+    function fill() { KEYS.forEach(function (k) { g(k).value = S[k]; }); }
     function drawRows() {
       g('rows').innerHTML = S.rows.map(function (r, i) {
         var opts = Object.keys(FREQ).map(function (k) { return '<option value="' + k + '"' + (r.f === k ? ' selected' : '') + '>' + FREQ[k][0] + '</option>'; }).join('');
@@ -1595,7 +1614,7 @@
     }
     function changed() { S.starter = false; save(); render(); }
     function wire() {
-      Object.keys(MAP).forEach(function (k) { g(k).addEventListener('input', function () { S[MAP[k]] = g(k).value; changed(); }); });
+      KEYS.forEach(function (k) { g(k).addEventListener('input', function () { S[k] = g(k).value; changed(); }); });
       g('rows').addEventListener('input', function (e) {
         var tr = e.target.closest('tr'); if (!tr) return;
         var r = S.rows[+tr.dataset.i], f = e.target.dataset.f; if (!r || !f) return; r[f] = e.target.value; changed();
@@ -1606,37 +1625,102 @@
       });
       g('add').addEventListener('click', function () { S.rows.push({ n: '', a: 0, f: 'm' }); S.starter = false; save(); drawRows(); render(); });
       g('reset').addEventListener('click', function () { S = starter(); save(); fill(); drawRows(); render(); });
+      g('print').addEventListener('click', printReport);
     }
     function tile(v, label, note, color) { return '<div class="stat"><b' + (color ? ' style="color:' + color + '"' : '') + '>' + v + '</b><span>' + label + (note ? '<br>' + note : '') + '</span></div>'; }
+
+    // weekly + hourly figures as [label, value, note] rows, shared by the screen tiles and the PDF
+    function weekRows(o) {
+      var rows = [
+        ['Weekly minimum', usd0(o.weekMin), 'overhead + payroll for the week, zero profit'],
+        ['Weekly goal', usd0(o.weekGoal), 'what you want to bill each week'],
+        ['Profit at the goal', usd0(o.weekProfit), o.weekGoal > 0 ? pct(o.weekProfit / o.weekGoal * 100) + ' of the goal' : ''],
+        ['Hours to bill: minimum', r1(o.hrsMin) + ' hrs', 'at ' + usd(n(S.rate)) + '/hr'],
+        ['Hours to bill: goal', r1(o.hrsGoal) + ' hrs', 'crew has ' + r1(o.weekHrs) + ' billable hrs a week'],
+        ['Most the crew can bill', usd0(o.capacity), r1(o.weekHrs) + ' billable hrs x ' + usd(n(S.rate))]
+      ];
+      return rows;
+    }
+    function hourRows(o) {
+      var rows = [
+        ['Overhead per year', usd0(o.annual), usd(o.annual / 12) + ' a month'],
+        ['Billable hours per year', Math.round(o.hours).toLocaleString('en-US'), n(S.people) + ' x ' + n(S.hpw) + ' hrs x ' + n(S.wks) + ' wks x ' + n(S.util) + '%'],
+        ['Overhead per billable hour', usd(o.perHr), ''],
+        ['Cost per billed hour', usd(o.costHr), usd(o.wageHr) + ' wage (incl. unbilled time) + ' + usd(o.perHr) + ' overhead'],
+        ['Rate for ' + pct(n(S.profit)) + ' profit', usd(o.targetRate), 'cost / (1 - profit %)'],
+        ['Profit at your ' + usd(n(S.rate)) + '/hr rate', usd(o.profitHr) + '/hr', pct(o.marginAtRate) + ' of what you bill'],
+        ['Overhead as % of revenue', pct(o.ovPctRev), 'at ' + usd0(o.weekGoal * n(S.wks)) + ' a year (goal x weeks)']
+      ];
+      if (o.markup != null) rows.push(['Markup on direct costs', pct(o.markup), 'covers overhead + profit']);
+      return rows;
+    }
+    function warnings(o) {
+      var w = [];
+      if (o.weekGoal < o.weekMin) w.push('The weekly goal (' + usd0(o.weekGoal) + ') is below the weekly minimum (' + usd0(o.weekMin) + '). Hitting the goal would lose money.');
+      if (o.hrsGoal > o.weekHrs) w.push('The goal needs ' + r1(o.hrsGoal) + ' billable hours a week at ' + usd(n(S.rate)) + '/hr, but the crew only has ' + r1(o.weekHrs) + '. Raise the rate, add people or lower the goal.');
+      if (o.hrsMin > o.weekHrs) w.push('Even the weekly minimum needs ' + r1(o.hrsMin) + ' billable hours, more than the crew has (' + r1(o.weekHrs) + ').');
+      if (o.profitHr < 0) w.push('At ' + usd(n(S.rate)) + ' an hour you lose ' + usd(-o.profitHr) + ' on every billed hour. The rate must be at least ' + usd(o.costHr) + ' just to break even.');
+      if (o.markup == null && o.weekGoal > 0) w.push('Overhead plus profit is 100% or more of the revenue goal, so no markup can cover it. Raise the goal or lower the costs or profit target.');
+      return w;
+    }
+    function jobRows(o) {
+      var j = o.job;
+      return [
+        ['Crew labor', usd(j.labor), n(S.jhrs) + ' hrs x ' + usd(o.wageHr)],
+        ['Overhead share', usd(j.ov), n(S.jhrs) + ' hrs x ' + usd(o.perHr)],
+        ['Materials and other', usd(j.direct), ''],
+        ['Total cost', usd(j.cost), ''],
+        ['Price to quote', usd(j.price), pct(n(S.profit)) + ' profit on price'],
+        ['Profit on the job', usd(j.profit), pct(j.price > 0 ? j.profit / j.price * 100 : 0) + ' of price']
+      ];
+    }
     function render() {
       var o = calc(S);
       S.rows.forEach(function (r, i) { var c = g('y' + i); if (c) c.textContent = usd0(n(r.a) * (FREQ[r.f] ? FREQ[r.f][1] : 1)); });
       g('total').textContent = usd0(o.annual);
       g('starter').hidden = !S.starter;
-      if (!o.ok) { g('results').innerHTML = ''; g('job').innerHTML = ''; g('how').textContent = ''; g('msg').innerHTML = '<div class="banner err">Enter people, hours per week, weeks per year and a billable % above zero to get results.</div>'; return; }
-      var h = '', msg = '';
-      h += tile(usd0(o.annual), 'Overhead per year', usd(o.annual / 12) + ' a month');
-      h += tile(Math.round(o.hours).toLocaleString('en-US'), 'Billable hours per year', n(S.people) + ' x ' + n(S.hpw) + ' hrs x ' + n(S.wks) + ' wks x ' + n(S.util) + '%');
-      h += tile(usd(o.perHr), 'Overhead per billable hour');
-      h += tile(usd(o.costHr), 'Cost per billed hour', usd(n(S.wage)) + ' wage + overhead');
-      h += tile(usd(o.targetRate), 'Rate for ' + pct(n(S.profit)) + ' profit', 'cost / (1 - profit %)');
-      h += tile(usd(o.profitHr) + '/hr', 'Profit at your ' + usd(n(S.rate)) + ' rate', pct(o.marginAtRate) + ' of what you bill', o.profitHr >= 0 && o.marginAtRate >= n(S.profit) ? 'var(--ok)' : 'var(--red)');
-      if (n(S.rev) > 0) {
-        h += tile(pct(o.ovPctRev), 'Overhead as % of revenue', 'at ' + usd0(n(S.rev)) + ' a year');
-        if (o.markup == null) msg = '<div class="banner err">Overhead plus profit is 100% or more of the revenue goal, so no markup can cover it. Raise the revenue goal or lower the costs or profit target.</div>';
-        else h += tile(pct(o.markup), 'Markup on direct costs', 'covers overhead + profit');
+      if (!o.ok) { g('week').innerHTML = ''; g('results').innerHTML = ''; g('job').innerHTML = ''; g('how').textContent = ''; g('msg').innerHTML = '<div class="banner err">Enter people, hours per week, weeks per year and a billable % above zero to get results.</div>'; return; }
+      var wr = weekRows(o);
+      g('week').innerHTML = wr.map(function (r, i) { return tile(r[1], r[0], r[2], i === 2 ? (o.weekProfit >= 0 ? 'var(--ok)' : 'var(--red)') : ''); }).join('');
+      g('results').innerHTML = hourRows(o).map(function (r, i) { return tile(r[1], r[0], r[2], i === 5 ? (o.profitHr >= 0 && o.marginAtRate >= n(S.profit) ? 'var(--ok)' : 'var(--red)') : ''); }).join('');
+      g('msg').innerHTML = warnings(o).map(function (m) { return '<div class="banner err">' + esc(m) + '</div>'; }).join('');
+      g('how').textContent = 'Weekly minimum = yearly overhead / weeks worked + payroll for all paid hours in a week. Markup on direct cost = (overhead % + profit %) / (1 - overhead % - profit %). Margin and markup differ: a 10% profit margin on price needs about an 11% markup on cost.';
+      g('job').innerHTML = jobRows(o).map(function (r, i) { return tile(r[1], r[0], r[2], i === 4 ? 'var(--ok)' : ''); }).join('');
+    }
+
+    // ---- printable / PDF report (uses the page's #printRoot + body.estprint, same as the quote) ----
+    function printReport() {
+      var o = calc(S);
+      if (!o.ok) { alert('Fill in people, hours, weeks and billable % first.'); return; }
+      function tbl(title, rows, cols) {
+        return '<h3 style="margin:16px 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:#3e2c1f">' + title + '</h3>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:13px">' + rows.map(function (r) {
+            return '<tr>' + r.map(function (c, i) { return '<td style="padding:4px 6px;border-bottom:1px solid #ddd;' + (i === 1 || (cols === 4 && i === 3) ? 'text-align:right;font-weight:600;white-space:nowrap' : (i === 2 ? 'color:#666;font-size:12px' : '')) + '">' + esc(c) + '</td>'; }).join('') + '</tr>';
+          }).join('') + '</table>';
       }
-      if (o.profitHr < 0) msg += '<div class="banner err">At ' + usd(n(S.rate)) + ' an hour you lose ' + usd(-o.profitHr) + ' on every billed hour. The rate must be at least ' + usd(o.costHr) + ' just to break even.</div>';
-      g('results').innerHTML = h; g('msg').innerHTML = msg;
-      g('how').textContent = 'Markup on direct cost = (overhead % + profit %) / (1 - overhead % - profit %), with overhead % = yearly overhead / revenue goal. Margin and markup differ: a 10% profit margin on price needs about an 11% markup on cost.';
-      var j = o.job, jt = '';
-      jt += tile(usd(j.labor), 'Crew labor', n(S.jhrs) + ' hrs x ' + usd(n(S.wage)));
-      jt += tile(usd(j.ov), 'Overhead share', n(S.jhrs) + ' hrs x ' + usd(o.perHr));
-      jt += tile(usd(j.direct), 'Materials and other');
-      jt += tile(usd(j.cost), 'Total cost');
-      jt += tile(usd(j.price), 'Price to quote', pct(n(S.profit)) + ' profit on price', 'var(--ok)');
-      jt += tile(usd(j.profit), 'Profit on the job', pct(j.price > 0 ? j.profit / j.price * 100 : 0) + ' of price');
-      g('job').innerHTML = jt;
+      var oh = S.rows.map(function (r) { return [r.n || '(unnamed)', usd(n(r.a)), FREQ[r.f] ? FREQ[r.f][0] : '', usd0(n(r.a) * (FREQ[r.f] ? FREQ[r.f][1] : 1))]; });
+      oh.push(['Total overhead', '', '', usd0(o.annual)]);
+      var assume = [
+        ['People who bill hours', String(n(S.people)), ''], ['Hours per week (each)', String(n(S.hpw)), ''], ['Weeks worked per year', String(n(S.wks)), ''],
+        ['Billable % of hours', pct(n(S.util)), ''], ['Wage + burden per paid hour', usd(n(S.wage)), ''], ['Rate billed per hour', usd(n(S.rate)), ''],
+        ['Target profit (% of price)', pct(n(S.profit)), ''], ['Weekly goal', usd0(n(S.goal)), '']
+      ];
+      var w = warnings(o);
+      var d = new Date(), ds = d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      var html = '<div style="font-family:Segoe UI,Arial,sans-serif;color:#111;padding:10px;max-width:720px;margin:0 auto">' +
+        '<div style="border-bottom:3px solid #3e2c1f;padding-bottom:8px"><div style="font-size:20px;font-weight:700;color:#3e2c1f">Fourth Light Farm Construction, LLC</div>' +
+        '<div style="font-size:15px">Overhead and weekly targets</div><div style="font-size:12px;color:#666">Prepared ' + esc(ds) + '</div></div>' +
+        (S.starter ? '<p style="background:#fbf1e3;color:#7a4a10;padding:6px 10px;border-radius:4px;font-size:12px;margin:10px 0 0"><b>Starter numbers:</b> the figures below are placeholders, not final FLFC costs.</p>' : '') +
+        tbl('Weekly minimum and goal', weekRows(o), 3) +
+        (w.length ? '<div style="margin-top:8px;padding:6px 10px;border-left:3px solid #a33a2b;background:#f7e2de;font-size:12px">' + w.map(esc).join('<br>') + '</div>' : '') +
+        tbl('Per hour and markup', hourRows(o), 3) +
+        tbl('Yearly overhead', oh, 4) + tbl('Crew hours and goals', assume, 3) +
+        tbl('Sample job: ' + n(S.jhrs) + ' labor hrs, ' + usd0(n(S.jmat)) + ' material, ' + usd0(n(S.joth)) + ' other', jobRows(o), 3) +
+        '<p style="font-size:11px;color:#777;margin-top:14px">Weekly minimum = yearly overhead / weeks worked + payroll for all paid hours in a week. Overhead is spread over billable hours only.</p></div>';
+      var pr = document.getElementById('printRoot'); pr.innerHTML = html;
+      document.body.classList.add('estprint');
+      var clean = function () { document.body.classList.remove('estprint'); pr.innerHTML = ''; window.removeEventListener('afterprint', clean); };
+      window.addEventListener('afterprint', clean); window.print();
     }
     window.overheadTab = function () { if (!built) { S = load(); built = true; build(); } };
   })();
