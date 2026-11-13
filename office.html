@@ -16,7 +16,10 @@
     .card { background:#fff; border:1px solid var(--line); border-radius:8px; padding:14px; margin-top:14px; }
     label { display:block; font-size:13px; font-weight:600; margin:10px 0 4px; color:var(--brown); }
     input, select, textarea { width:100%; font:inherit; font-size:15px; padding:8px 9px; border:1px solid #b9b2a2; border-radius:6px; background:#fff; color:var(--ink); min-width:0; }
-    input[type=checkbox] { width:auto; }
+    input[type=checkbox], input[type=radio] { width:auto; }
+    .whenRow { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 10px; font-size:14px; font-weight:600; color:var(--ink); cursor:pointer; }
+    .whenRow input[type=radio] { margin:0; flex:none; width:18px; height:18px; accent-color:var(--brown); }
+    .whenRow input[type=datetime-local] { width:auto; flex:0 1 240px; }
     textarea { min-height:70px; resize:vertical; }
     button { font:inherit; font-weight:600; border:0; border-radius:6px; cursor:pointer; background:var(--brown); color:#fff; padding:8px 14px; min-height:38px; }
     button.alt { background:transparent; color:var(--brown); border:1.5px solid var(--brown); }
@@ -1384,13 +1387,13 @@
     // ---- 3. when
     var when = el('section', null, 'card');
     when.appendChild(el('h2', '3. When'));
-    var wnow = el('label', null, 'show'); wnow.style.fontSize = '14px'; wnow.style.color = 'var(--ink)';
+    var wnow = el('label', null, 'whenRow');
     var rNow = el('input'); rNow.type = 'radio'; rNow.name = 'outwhen'; rNow.checked = true;
-    wnow.appendChild(rNow); wnow.appendChild(document.createTextNode(' Send now'));
-    var wlater = el('label', null, 'show'); wlater.style.fontSize = '14px'; wlater.style.color = 'var(--ink)'; wlater.style.marginTop = '6px';
+    wnow.appendChild(rNow); wnow.appendChild(document.createTextNode('Send now'));
+    var wlater = el('label', null, 'whenRow');
     var rLater = el('input'); rLater.type = 'radio'; rLater.name = 'outwhen';
-    wlater.appendChild(rLater); wlater.appendChild(document.createTextNode(' Schedule for'));
-    var dt = el('input'); dt.type = 'datetime-local'; dt.min = localNowMin(); dt.style.maxWidth = '240px'; dt.disabled = true;
+    wlater.appendChild(rLater); wlater.appendChild(document.createTextNode('Schedule for'));
+    var dt = el('input'); dt.type = 'datetime-local'; dt.min = localNowMin(); dt.disabled = true;
     wlater.appendChild(dt);
     when.appendChild(wnow); when.appendChild(wlater);
     when.appendChild(el('p', 'Times are Eastern. Scheduled emails go out within the hour, but only while the hourly scheduler trigger is set up. If the scheduler is more than 24 hours late, the email is skipped, never sent late.', 'muted'));
