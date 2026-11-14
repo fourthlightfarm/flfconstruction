@@ -2704,7 +2704,9 @@
           '<input data-f="label" value="' + esc(m.label) + '"><span class="val">' + (v ? v.v.toFixed(v.u === 'EA' ? 0 : 1) + ' ' + v.u : 'set scale') + '</span><button class="small danger" data-del>&times;</button></div>' +
           (f ? '<div class="add">' + modeSel + numIn + '<span class="res" data-res>' + esc(figText(f)) + '</span>' +
             '<select data-asm>' + (opts || '<option value="">No work type with unit ' + f.u + '</option>') + '</select><button class="small go" data-send' + (ok ? '' : ' disabled') + '>Add to estimate</button>' +
-            (m.type === 'len' ? '<button class="small alt" data-frame title="Fill the Framing calculator with this length">Frame it</button>' : '') + '</div>' : '') + '</div>';
+            (m.type === 'len' ? '<button class="small alt" data-frame title="Fill the Framing calculator with this length">Frame it</button>' : '') +
+            (m.type === 'area' ? '<button class="small alt" data-frame title="Fill the Framing calculator with the perimeter of this room as wall length, with its corners">Frame the walls</button>' : '') + '</div>' : '') +
+          (m.type === 'cnt' ? '<div class="add"><button class="small alt" data-openings title="Fill the Framing calculator with this count as the number of openings (doors, windows)">Use as openings for framing</button></div>' : '') + '</div>';
       }).join('');
     }
     function openPlan(f) {
@@ -2973,10 +2975,20 @@
           if (v && !v.need && addAssembly(asm, round2(v.v), num($e('tk-waste').value), m.label + (v.note ? ' (' + v.note + ')' : ''))) { toast('Added to the estimate: ' + round2(v.v) + ' ' + v.u); renderMatList(); }
         }
         if (e.target.closest('[data-frame]')) {
-          var fv = measValue(m); if (!fv) return;
-          showSub('estimate'); frInit(); fe('run').value = round2(fv.v); fe('label').value = m.label; frRender();
-          $e('fr-card').scrollIntoView({ block: 'start' }); toast('Length filled in. Pick the spacing and size.');
-        }      });
+          var fv = measValue(m); if (!fv) { banner('Set the scale first.', 'err'); return; }
+          var run = m.type === 'area' ? perimLF(m) : fv.v;
+          showSub('estimate'); frInit(); fe('kind').value = 'wall'; fe('run').value = round2(run); fe('label').value = m.label;
+          if (m.type === 'area') fe('corners').value = m.pts.length;
+          frRender(); $e('fr-card').scrollIntoView({ block: 'start' });
+          toast(m.type === 'area' ? 'Wall length ' + round2(run) + ' LF and ' + m.pts.length + ' corners filled in. Set height and openings, then click Add framing to estimate.' : 'Length filled in. Pick the spacing and size, then click Add framing to estimate.');
+        }
+        if (e.target.closest('[data-openings]')) {
+          var cnt = m.pts.length;
+          showSub('estimate'); frInit(); fe('kind').value = 'wall'; fe('openings').value = cnt; frRender();
+          $e('fr-card').scrollIntoView({ block: 'start' });
+          toast(cnt + ' openings filled in. Add the wall length (Frame the walls on an Area), then click Add framing to estimate.');
+        }
+      });
       // quote
       $e('q-detail').addEventListener('change', renderQuote);
       $e('q-print').addEventListener('click', function () {
