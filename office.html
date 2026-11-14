@@ -1674,6 +1674,32 @@
         ['Insulation resistance tester (megohmmeter)', 'optional'], ['Phase rotation / outlet analyzer', 'optional'], ['Inspection camera / borescope', '']]],
       ['Supplies and safety', [
         ['Test leads, probes and alligator clips', ''], ['Spare batteries', ''], ['Lockout / tagout kit', ''], ['Insulated gloves and eye protection', ''], ['Notebook or label maker for circuit directories', '']]]
+    ]},
+    { id: 'fasten', name: 'Standard Fasteners', note: 'Use hot-dip galvanized or stainless fasteners in treated lumber and anything exterior. Check that connectors and screws are rated for the treatment.', groups: [
+      ['Nails', [
+        ['Framing nails, 16d (3-1/2") and 12d (3-1/4")', 'collated and box'], ['Framing nails, 8d and 10d common', ''], ['Joist hanger nails, 10d x 1-1/2"', 'galvanized'],
+        ['Finish nails, 6d and 8d', ''], ['Roofing nails, 1-1/4" galvanized', ''], ['Ring-shank siding nails', 'hot-dip galvanized'], ['Concrete / masonry nails', ''],
+        ['Brad nails, 18 ga, 5/8" to 2"', ''], ['Finish nails, 15 or 16 ga, 1-1/4" to 2-1/2"', ''], ['Pin nails, 23 ga, 1/2" to 1-3/8"', ''],
+        ['Staples: narrow crown and 18 ga', ''], ['Plastic cap nails (housewrap, felt)', '']]],
+      ['Wood and deck screws', [
+        ['Deck screws #8 and #10, 2" to 3"', 'coated or stainless'], ['Construction screws #9, 2" to 3-1/2"', 'GRK / Spax style'],
+        ['Structural screws (LedgerLOK)', '3" to 6"'], ['Trim-head screws #8, 2" to 3"', ''], ['Pocket hole screws, 1" to 2-1/2"', 'coarse and fine'],
+        ['Cabinet screws and hinge screws', ''], ['Hidden deck fastener clips and screws', 'optional']]],
+      ['Drywall, cement board and metal', [
+        ['Drywall screws, 1-1/4" and 1-5/8"', 'coarse and fine thread'], ['Drywall screws, 2" to 2-1/2"', ''], ['Cement board screws, 1-1/4"', 'corrosion-resistant'],
+        ['Sheet metal screws, #8 and #10', ''], ['Self-drilling metal screws', 'pan and hex head'], ['Self-tapping screws', '']]],
+      ['Bolts, lags and nuts', [
+        ['Carriage bolts, 1/4" to 1/2"', ''], ['Hex bolts, 1/4" to 1/2"', ''], ['Lag screws, 1/4" to 1/2"', ''], ['Nuts: hex, lock and nylon-insert', ''],
+        ['Washers: flat, fender and lock', ''], ['Threaded rod and couplings', ''], ['Hardware assortment drawer', '']]],
+      ['Anchors', [
+        ['Tapcon concrete screws, 3/16" and 1/4"', ''], ['Wedge anchors, 3/8" and 1/2"', ''], ['Sleeve anchors', ''], ['Anchor bolts / J-bolts for sills', ''],
+        ['Drywall anchors and toggle bolts', ''], ['Plastic anchors', ''], ['Epoxy anchoring adhesive', 'optional']]],
+      ['Structural connectors', [
+        ['Joist hangers, 2x6 to 2x12', 'face and top mount'], ['Hurricane / seismic ties', ''], ['Post bases and post caps', ''], ['Framing angles and strap ties', ''],
+        ['Hold-downs', ''], ['Truss and rafter clips', ''], ['Simpson SD / SDS screws', 'for connectors']]],
+      ['Adhesives and driver bits', [
+        ['Construction adhesive tubes', ''], ['Wood glue', ''], ['Driver bits: Phillips #2, square #2, Torx T25 and T20', ''],
+        ['Magnetic bit holders and extensions', ''], ['Nut setters', ''], ['Fastener organizer / parts bins', '']]]
     ]}
     ];
     function load() { try { var s = JSON.parse(localStorage.getItem(KEY)); if (s && typeof s === 'object') { s.st = s.st || {}; s.custom = s.custom || {}; s.hidden = s.hidden || {}; return s; } } catch (e) {} return { st: {}, custom: {}, hidden: {} }; }
