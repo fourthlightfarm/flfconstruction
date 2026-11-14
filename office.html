@@ -133,8 +133,12 @@
     #estTab .meas .top { display:flex; gap:6px; align-items:center; }
     #estTab .meas .top input { flex:1; padding:4px 6px; font-size:14px; }
     #estTab .meas .val { font-weight:700; color:var(--brown); white-space:nowrap; }
-    #estTab .meas .add { display:flex; gap:6px; margin-top:6px; }
-    #estTab .meas .add select { flex:1; padding:4px; font-size:13px; }
+    #estTab .meas .add { display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; align-items:center; }
+    #estTab .meas .add select { flex:1 1 150px; padding:4px; font-size:13px; }
+    #estTab .meas .add input.mnum { flex:0 0 70px; width:70px; padding:4px 6px; font-size:13px; }
+    #estTab .meas .add .res { font-weight:700; font-size:13px; color:var(--brown); flex:1 1 100%; }
+    #estTab .meas .add .mlbl { font-size:12px; color:var(--muted, #6b6455); }
+    #estTab .matlist td, #estTab .matlist th { font-size:13px; }
     #estTab .calbox { background:#fbf1e3; border:1px solid #e6c796; border-radius:8px; padding:8px; margin-top:8px; }
     #estTab .rowf { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; }
     #estTab .rowf > div { flex:1 1 120px; }
@@ -2309,6 +2313,9 @@
           '<div class="bar" style="margin-top:10px"><button class="alt small" data-add="Labor">+ Labor</button><button class="alt small" data-add="Material">+ Material</button><button class="alt small" data-add="Dump">+ Dump</button><button class="alt small" data-add="Travel">+ Travel</button><button class="alt small" data-add="Other">+ Other</button></div>' +
           '<p class="muted">A labor line with a blank unit price uses the labor rate from the Price list.</p></section>' +
         '<section class="card"><h2>Totals</h2><div class="totals" id="e-totals"></div></section>' +
+        '<section class="card" id="e-mat-card"><h2>Material list</h2><div id="e-mat"></div>' +
+          '<div class="bar" style="margin-top:10px"><button class="alt small" id="e-mat-copy">Copy list</button><button class="alt small" id="e-mat-print">Print list</button></div>' +
+          '<p class="muted">Every Material line in this estimate with waste already included, ready to take to the supplier. Costs are the Price list costs, before any markup. Internal use, not shown to the customer.</p></section>' +
         '<section class="card"><h2>Save / load</h2><div class="rowf">' +
           '<div style="flex:2 1 200px"><label>Save this estimate as</label><input id="e-save-name" placeholder="e.g. Smith - master bath"></div>' +
           '<div class="fix"><button class="go" id="e-save">Save</button></div><div class="fix"><button class="alt" id="e-new">New estimate</button></div></div>' +
@@ -2435,6 +2442,24 @@
       h += '<div>Card (+' + P.card + '%)</div><div>' + fm(c.card) + '</div>';
       h += '<div class="muted">Donation to FLF, 10% of project cost (internal)</div><div class="muted">' + fm(c.donation) + '</div>';
       $e('totals').innerHTML = h; $e('hdr').textContent = fm(c.total);
+      renderMatList();
+    }
+    // ----- material list (Material lines only, for buying) -----
+    function matRows() { return S.items.filter(function (i) { return i.cat === 'Material'; }); }
+    function matCost(i) { return num(i.qty) * num(i.price); }
+    function renderMatList() {
+      var b = $e('mat'); if (!b) return;
+      var R = matRows(), tot = 0;
+      if (!R.length) { b.innerHTML = '<div class="muted">No material lines yet. Add a work type or measure a plan and the materials show up here.</div>'; return; }
+      b.innerHTML = '<div class="tblwrap"><table class="matlist"><thead><tr><th>Material</th><th class="num">Qty</th><th>Unit</th><th class="num">Each</th><th class="num">Cost</th></tr></thead><tbody>' +
+        R.map(function (i) { tot += matCost(i); return '<tr><td>' + esc(i.desc || 'Material') + '</td><td class="num">' + esc(round2(num(i.qty))) + '</td><td>' + esc(i.unit || '') + '</td><td class="num">' + (num(i.price) ? fm(num(i.price)) : '') + '</td><td class="num">' + fm(matCost(i)) + '</td></tr>'; }).join('') +
+        '</tbody><tfoot><tr><td colspan="4"><strong>Total materials (before markup)</strong></td><td class="num"><strong>' + fm(tot) + '</strong></td></tr></tfoot></table></div>';
+    }
+    function matText() {
+      var R = matRows(), tot = 0;
+      return 'Material list' + (S.job.job || S.job.customer ? ' - ' + [S.job.customer, S.job.job].filter(Boolean).join(' - ') : '') + '\n\n' +
+        R.map(function (i) { tot += matCost(i); return round2(num(i.qty)) + ' ' + (i.unit || '') + '  ' + (i.desc || 'Material') + (num(i.price) ? '  @ ' + fm(num(i.price)) : ''); }).join('\n') +
+        '\n\nTotal materials (before markup): ' + fm(tot);
     }
     function renderSaved() {
       var b = $e('saved');
@@ -2632,15 +2657,54 @@
         if (type !== 'cnt' && !calFor(T.page)) banner('Set the scale to get feet. Values show once it is set.', 'err');
       } else banner(type === 'area' ? 'An area needs at least 3 corners.' : type === 'len' ? 'A length needs at least 2 points.' : 'Click something to count first.', 'err');
     }
+    // How a measurement can be figured. A length can become wall area (x height), an area can become
+    // perimeter or wall area, and a count of points can stand for a size each (SF or LF per point).
+    var MODES = {
+      len: [['lf', 'Length (LF)'], ['wall', 'Wall area = length x height']],
+      area: [['sf', 'Area (SF)'], ['per', 'Perimeter (LF)'], ['wall', 'Wall area = perimeter x height']],
+      cnt: [['ea', 'Count (EA)'], ['eachsf', 'Each point covers SF'], ['eachlf', 'Each point is LF']]
+    };
+    function measMode(m) { var l = MODES[m.type]; return l.some(function (x) { return x[0] === m.mode; }) ? m.mode : l[0][0]; }
+    function measNum(m) { return m.num == null || m.num === '' ? (measMode(m) === 'wall' ? 8 : 0) : num(m.num); }
+    function perimLF(m) {
+      var c = calFor(m.page); if (!c) return null;
+      var L = 0, n = m.pts.length;
+      for (var i = 0; i < n; i++) { var a = m.pts[i], b = m.pts[(i + 1) % n]; L += Math.hypot(b[0] - a[0], b[1] - a[1]); }
+      return L / c;
+    }
+    // Returns { v, u, note, need } or null when there is no scale yet. need = a number is still required.
+    function measFigure(m) {
+      var mode = measMode(m), h = measNum(m), v = measValue(m);
+      if (m.type === 'cnt') {
+        var n = m.pts.length;
+        if (mode === 'ea') return { v: n, u: 'EA', note: '' };
+        var u = mode === 'eachsf' ? 'SF' : 'LF';
+        return h > 0 ? { v: n * h, u: u, note: n + ' x ' + h + ' ' + u } : { v: 0, u: u, need: true };
+      }
+      if (!v) return null;
+      if (m.type === 'len') return mode === 'lf' ? { v: v.v, u: 'LF', note: '' } : (h > 0 ? { v: v.v * h, u: 'SF', note: h + ' ft high' } : { v: 0, u: 'SF', need: true });
+      if (mode === 'sf') return { v: v.v, u: 'SF', note: '' };
+      var p = perimLF(m);
+      if (mode === 'per') return { v: p, u: 'LF', note: 'perimeter' };
+      return h > 0 ? { v: p * h, u: 'SF', note: 'perimeter x ' + h + ' ft high' } : { v: 0, u: 'SF', need: true };
+    }
+    function numLabel(m) { var mode = measMode(m); return mode === 'wall' ? 'ft high' : mode === 'eachsf' ? 'SF each' : mode === 'eachlf' ? 'LF each' : ''; }
+    function figText(f) { return f.need ? 'enter the number' : '= ' + f.v.toFixed(f.u === 'EA' ? 0 : 1) + ' ' + f.u + (f.note ? ' (' + f.note + ')' : ''); }
+    function asmOptions(unit) { return P.asm.filter(function (a) { return a.unit === unit; }).map(function (a) { return '<option value="' + a.id + '">' + esc(a.name) + '</option>'; }).join(''); }
     function renderMeas() {
       var box = $e('meas'), L = S.takeoff.meas;
       $e('meas-empty').hidden = !!L.length;
       box.innerHTML = L.map(function (m) {
-        var v = measValue(m);
-        var opts = P.asm.filter(function (a) { return v && a.unit === v.u; }).map(function (a) { return '<option value="' + a.id + '">' + esc(a.name) + '</option>'; }).join('');
+        var v = measValue(m), f = measFigure(m), mode = measMode(m), nl = numLabel(m);
+        var opts = f ? asmOptions(f.u) : '';
+        var modeSel = '<select data-mode title="How to figure this measurement">' + MODES[m.type].map(function (x) { return '<option value="' + x[0] + '"' + (x[0] === mode ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select>';
+        var numIn = nl ? '<input class="mnum" data-num type="number" min="0" step="any" value="' + (measNum(m) || '') + '" placeholder="0"><span class="mlbl">' + nl + '</span>' : '';
+        var ok = f && !f.need && opts;
         return '<div class="meas" data-id="' + m.id + '"><div class="top"><span class="pill">' + (m.type === 'len' ? 'LF' : m.type === 'area' ? 'SF' : 'EA') + (m.page > 1 ? ' p' + m.page : '') + '</span>' +
           '<input data-f="label" value="' + esc(m.label) + '"><span class="val">' + (v ? v.v.toFixed(v.u === 'EA' ? 0 : 1) + ' ' + v.u : 'set scale') + '</span><button class="small danger" data-del>&times;</button></div>' +
-          (v ? '<div class="add"><select data-asm>' + (opts || '<option value="">No work type with unit ' + v.u + '</option>') + '</select><button class="small go" data-send' + (opts ? '' : ' disabled') + '>Add to estimate</button>' + (m.type === 'len' ? '<button class="small alt" data-frame title="Fill the Framing calculator with this length">Frame it</button>' : '') + '</div>' : '') + '</div>';
+          (f ? '<div class="add">' + modeSel + numIn + '<span class="res" data-res>' + esc(figText(f)) + '</span>' +
+            '<select data-asm>' + (opts || '<option value="">No work type with unit ' + f.u + '</option>') + '</select><button class="small go" data-send' + (ok ? '' : ' disabled') + '>Add to estimate</button>' +
+            (m.type === 'len' ? '<button class="small alt" data-frame title="Fill the Framing calculator with this length">Frame it</button>' : '') + '</div>' : '') + '</div>';
       }).join('');
     }
     function openPlan(f) {
@@ -2884,16 +2948,29 @@
         if (e.key === 'Backspace') { T.pts.pop(); drawOverlay(); e.preventDefault(); }
       });
       $e('meas').addEventListener('input', function (e) {
-        if (e.target.dataset.f !== 'label') return;
-        var m = S.takeoff.meas.filter(function (x) { return x.id === e.target.closest('.meas').dataset.id; })[0]; if (m) { m.label = e.target.value; saveDraft(); drawOverlay(); }
+        var card = e.target.closest('.meas'); if (!card) return;
+        var m = S.takeoff.meas.filter(function (x) { return x.id === card.dataset.id; })[0]; if (!m) return;
+        if (e.target.dataset.f === 'label') { m.label = e.target.value; saveDraft(); drawOverlay(); }
+        if (e.target.hasAttribute('data-num')) {
+          m.num = e.target.value; saveDraft();
+          var f = measFigure(m), res = card.querySelector('[data-res]'), btn = card.querySelector('[data-send]');
+          if (f && res) res.textContent = figText(f);
+          if (f && btn) btn.disabled = !!f.need || !card.querySelector('[data-asm]').value;
+        }
+      });
+      $e('meas').addEventListener('change', function (e) {
+        if (!e.target.hasAttribute('data-mode')) return;
+        var card = e.target.closest('.meas'); if (!card) return;
+        var m = S.takeoff.meas.filter(function (x) { return x.id === card.dataset.id; })[0]; if (!m) return;
+        m.mode = e.target.value; m.num = ''; saveDraft(); renderMeas();
       });
       $e('meas').addEventListener('click', function (e) {
         var card = e.target.closest('.meas'); if (!card) return;
         var m = S.takeoff.meas.filter(function (x) { return x.id === card.dataset.id; })[0]; if (!m) return;
         if (e.target.closest('[data-del]')) { S.takeoff.meas = S.takeoff.meas.filter(function (x) { return x !== m; }); saveDraft(); renderMeas(); drawOverlay(); }
         if (e.target.closest('[data-send]')) {
-          var v = measValue(m), asm = card.querySelector('[data-asm]').value;
-          if (v && addAssembly(asm, round2(v.v), num($e('tk-waste').value), m.label)) toast('Added to the estimate: ' + round2(v.v) + ' ' + v.u);
+          var v = measFigure(m), asm = card.querySelector('[data-asm]').value;
+          if (v && !v.need && addAssembly(asm, round2(v.v), num($e('tk-waste').value), m.label + (v.note ? ' (' + v.note + ')' : ''))) { toast('Added to the estimate: ' + round2(v.v) + ' ' + v.u); renderMatList(); }
         }
         if (e.target.closest('[data-frame]')) {
           var fv = measValue(m); if (!fv) return;
@@ -2910,6 +2987,15 @@
       });
       function copy(text, btn) { copyText(text, btn); }
       $e('h-copy').addEventListener('click', function () { copy(handoffText(), this); });
+      $e('mat-copy').addEventListener('click', function () { if (!matRows().length) { banner('No material lines yet.', 'err'); return; } copy(matText(), this); });
+      $e('mat-print').addEventListener('click', function () {
+        if (!matRows().length) { banner('No material lines yet.', 'err'); return; }
+        var pr = $('printRoot'), head = [S.job.customer, S.job.job, S.job.address].filter(Boolean).map(esc).join(' - ');
+        pr.innerHTML = '<div class="estQuote" style="font-family:Segoe UI,Arial,sans-serif;color:#111;padding:10px"><h2 style="margin:0 0 4px">Material list</h2><div style="margin-bottom:10px">' + head + '</div>' + $e('mat').innerHTML + '</div>';
+        document.body.classList.add('estprint');
+        var clean = function () { document.body.classList.remove('estprint'); pr.innerHTML = ''; window.removeEventListener('afterprint', clean); };
+        window.addEventListener('afterprint', clean); window.print();
+      });
       $e('q-copy').addEventListener('click', function () {
         var c = calc();
         copy('Fourth Light Farm Construction, LLC - Estimate ' + quoteNo() + '\n' + (S.job.customer || '') + (S.job.job ? ' - ' + S.job.job : '') + '\n\n' +
