@@ -70,6 +70,37 @@
     .lightbox { position:fixed; top:0; right:0; bottom:0; left:0; background:rgba(20,14,10,.88); z-index:50; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:16px; }
     .lightbox img { max-width:100%; max-height:78vh; border-radius:6px; background:#fff; }
     .lightbox .nm { color:#fff; font-weight:600; overflow-wrap:anywhere; text-align:center; }
+    /* Tools tab */
+    .tl-dd { position:relative; display:inline-block; }
+    .tl-dd .ddm { position:absolute; top:100%; left:0; z-index:30; margin-top:4px; background:#fff; border:1px solid var(--line); border-radius:8px; min-width:220px; padding:4px; box-shadow:0 6px 18px rgba(0,0,0,.18); }
+    .tl-dd .ddm button { display:block; width:100%; text-align:left; background:none; color:var(--ink); border:0; border-radius:5px; min-height:34px; padding:6px 10px; font-weight:600; }
+    .tl-dd .ddm button:hover { background:var(--tan); }
+    #toolTab .bar input[type=search] { flex:1 1 200px; width:auto; }
+    .tl-totals { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+    .tl-chip { background:#fff; border:1px solid var(--line); border-radius:8px; padding:5px 12px; font-size:14px; }
+    .tl-chip b { font-size:17px; color:var(--brown); }
+    details.tl-cat { background:#fff; border:1px solid var(--line); border-radius:8px; margin-bottom:10px; }
+    details.tl-cat > summary { cursor:pointer; padding:11px 14px; display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; list-style:none; }
+    details.tl-cat > summary::-webkit-details-marker { display:none; }
+    details.tl-cat > summary::before { content:'\25B8'; color:var(--muted); }
+    details.tl-cat[open] > summary::before { content:'\25BE'; }
+    details.tl-cat > summary h2 { margin:0; }
+    .tl-count { font-size:12.5px; color:var(--muted); margin-left:auto; }
+    .tl-count b { color:#b4691f; }
+    .tl-items { padding:0 14px 12px; }
+    .tl-items h3 { margin:12px 0 4px; font-size:12px; border-bottom:1px solid var(--line); padding-bottom:3px; }
+    .tl-note { background:#fbf1e3; color:#7a4a10; border-radius:6px; padding:8px 12px; font-size:13px; margin:8px 0 2px; }
+    .tl-item { display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid #f0ece0; }
+    .tl-st { flex:0 0 auto; width:70px; background:#fff; color:var(--muted); border:1.5px solid var(--line); border-radius:6px; padding:3px 0; font-size:12.5px; min-height:0; }
+    .tl-st.have { background:#e3f0e1; border-color:var(--green); color:var(--green); }
+    .tl-st.need { background:#fbe9d3; border-color:#b4691f; color:#7a4a10; }
+    .tl-nm { flex:1 1 auto; min-width:0; }
+    .tl-nm .n { font-weight:600; }
+    .tl-nm .d { display:block; font-size:12.5px; color:var(--muted); }
+    .tl-item.have .n { color:var(--green); }
+    .tl-del { flex:0 0 auto; background:none; color:var(--red); border:0; min-height:0; padding:2px 8px; font-size:17px; }
+    .tl-add { display:flex; gap:8px; margin-top:10px; }
+    .tl-add input { flex:1; }
     /* Overhead tab */
     #ohTab table { width:100%; border-collapse:collapse; }
     #ohTab th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); padding:3px 4px; }
@@ -146,6 +177,7 @@
       <button id="tabOut" class="alt">Outreach</button>
       <button id="tabEst" class="alt">Estimator</button>
       <button id="tabOh" class="alt">Overhead</button>
+      <span class="tl-dd"><button id="tabTool" class="alt">Tools &#9662;</button><div class="ddm" id="ddTool" hidden></div></span>
     </div>
     <div id="custTab">
     <div class="card bar">
@@ -188,6 +220,7 @@
     <div id="outTab" hidden></div>
     <div id="estTab" hidden></div>
     <div id="ohTab" hidden></div>
+    <div id="toolTab" hidden></div>
   </div>
 </main>
 <div id="printRoot"></div>
@@ -1260,15 +1293,17 @@
   }
 
   function showTab(which) {
-    $('custTab').hidden = which !== 'cust'; $('outTab').hidden = which !== 'out'; $('estTab').hidden = which !== 'est'; $('ohTab').hidden = which !== 'oh';
+    $('custTab').hidden = which !== 'cust'; $('outTab').hidden = which !== 'out'; $('estTab').hidden = which !== 'est'; $('ohTab').hidden = which !== 'oh'; $('toolTab').hidden = which !== 'tool';
     $('tabCust').className = which === 'cust' ? 'go' : 'alt';
     $('tabOut').className = which === 'out' ? 'go' : 'alt';
     $('tabEst').className = which === 'est' ? 'go' : 'alt';
     $('tabOh').className = which === 'oh' ? 'go' : 'alt';
+    $('tabTool').className = which === 'tool' ? 'go' : 'alt';
     banner('');
     if (which === 'out') outreachTab();
     if (which === 'est') estimatorTab();
     if (which === 'oh') overheadTab();
+    if (which === 'tool') toolsTab();
   }
   $('tabCust').addEventListener('click', function () { showTab('cust'); });
   $('tabOut').addEventListener('click', function () { showTab('out'); });
@@ -1513,6 +1548,269 @@
     paintCampaigns(d.campaigns, d.lastRun, d.scheduled);
     refreshCount();
   }
+
+  // ---------- Tools tab: tool checklists by trade (Have / Need), shopping list, print ----------
+  // Private to this browser; nothing is sent to the backend.
+  (function () {
+    var KEY = 'flfc_office_toollists_v1', built = false, S = null;
+    var filter = 'all', query = '', trade = 'all', openIds = {};
+    var CATS = [
+    { id: 'plumb', name: 'Plumbing', groups: [
+      ['Cutting and joining', [
+        ['Tubing cutter, small (1/2" to 1")', 'copper'], ['Tubing cutter, large (up to 2")', ''], ['Deburring / reaming tool', ''],
+        ['PEX cinch / crimp tool', 'with ring gauges'], ['PEX cutter', ''], ['PEX expansion tool (PEX-A)', 'optional'],
+        ['PVC / ABS ratchet cutter', ''], ['Hacksaw and fine-tooth PVC saw', ''], ['Reciprocating saw blades for pipe', 'metal and cast iron'],
+        ['Propane / MAPP torch with striker', ''], ['Heat shield / fire cloth', ''], ['Solder, flux, brushes, abrasive cloth', 'lead-free'], ['Tube brushes (fitting and pipe)', '']]],
+      ['Wrenches and turning', [
+        ['Pipe wrenches: 10", 14", 18"', ''], ['Basin wrench', ''], ['Strap wrench', ''], ['Adjustable wrenches, 8" and 12"', ''],
+        ['Channel-lock pliers set', ''], ['Faucet seat wrench / valve seat tool', ''], ['Tub and shower socket set', ''], ['Hex key / Allen set', '']]],
+      ['Drains and testing', [
+        ['Closet auger', ''], ['Drain snake, hand auger (25 ft)', ''], ['Drain machine, drum type', 'optional'], ['Plunger set (cup and flange)', ''],
+        ['Pressure test gauge and air test kit', ''], ['Test plugs and caps (drain and supply)', ''], ['Inspection camera / borescope', '']]],
+      ['Supplies and misc', [
+        ['Teflon tape and pipe dope', ''], ['Plumber\'s putty and silicone', ''], ['Hole saws and right-angle drill', ''],
+        ['Torpedo level and pipe slope level', ''], ['Wet / dry vacuum', ''], ['Buckets, towels and drop cloths', ''], ['Caulk gun', '']]]
+    ]},
+    { id: 'finish', name: 'Finish Carpentry', groups: [
+      ['Saws', [
+        ['12" sliding compound miter saw', 'with 80-tooth blade'], ['Track saw or table saw', ''], ['Jigsaw (barrel or top-handle)', ''],
+        ['Flush-cut pull saw', 'Japanese style'], ['Coping saw and spare blades', ''], ['Oscillating multi-tool with blades', '']]],
+      ['Nailers and air', [
+        ['18-gauge brad nailer', ''], ['15 or 16-gauge finish nailer', ''], ['23-gauge pin nailer', ''],
+        ['Compressor and air hose', ''], ['Air fittings, couplers and oil', ''], ['Nail set, various sizes', ''], ['Hammer, 16 oz finish', '']]],
+      ['Measuring and layout', [
+        ['Tape measures, 25 ft (x2)', ''], ['Speed square and combination square', ''], ['Sliding T-bevel and angle finder', ''],
+        ['Laser measure', ''], ['Levels: 2 ft and 4 ft', ''], ['Laser level, cross-line', ''], ['Stud finder', ''], ['Scribe / compass', ''], ['Marking knife and pencils', '']]],
+      ['Hand tools and shaping', [
+        ['Block plane (low-angle)', ''], ['Chisels, 1/4" to 1-1/2"', ''], ['Hinge mortise template and chisel', ''],
+        ['Door lockset jig and hole saw kit', ''], ['Trim router with bits', ''], ['Pocket hole jig', ''], ['Random-orbit sander and sanding blocks', ''], ['Rasp / file set', '']]],
+      ['Removal and fastening', [
+        ['Flat bars and trim puller', 'Stanley FUBAR / wonder bar'], ['Cat\'s paw', ''], ['Cordless drill and impact driver', ''], ['Countersink bits', ''], ['Utility knives and blades', '']]],
+      ['Clamping and support', [
+        ['Bar clamps and F-clamps', ''], ['Pipe clamps and spring clamps', ''], ['Sawhorses', ''], ['Shims, wedges and glue', ''], ['Caulk gun and putty knives', '']]]
+    ]},
+    { id: 'framing', name: 'Framing', groups: [
+      ['Power tools', [
+        ['Framing nailer, 21 or 30 degree', 'with nails, 2-3/8" to 3-1/4"'], ['7-1/4" circular saw', ''], ['Reciprocating saw', ''],
+        ['1/2" drill and impact driver', ''], ['Hammer drill', ''], ['Collated screw gun', 'optional'], ['Compressor and hoses', ''], ['Chainsaw or demo saw', 'optional']]],
+      ['Layout and measuring', [
+        ['25 to 35 ft tape measures', ''], ['Speed square and framing square', ''], ['Chalk line and chalk', ''], ['Plumb bob', ''],
+        ['Levels: 4 ft and 6 ft', ''], ['Post level', ''], ['Laser level', ''], ['String line and line level', ''], ['Lumber crayons and pencils', '']]],
+      ['Hand tools', [
+        ['Framing hammer, 20 to 22 oz', ''], ['Wrecking bar and flat bar', ''], ['Dead-blow or sledge hammer', ''],
+        ['Tool belt and nail pouch', ''], ['Utility knife', ''], ['Pry bar, 24"', '']]],
+      ['Fasteners and hardware', [
+        ['Structural screws (LedgerLOK, GRK)', ''], ['Joist hangers, hurricane ties', 'Simpson'], ['Framing nails and box nails', ''], ['Construction adhesive and caulk gun', '']]],
+      ['Support and safety', [
+        ['Ladders: step and extension', ''], ['Ratchet straps and come-along', ''], ['Framing clamps and temporary braces', ''],
+        ['Hard hat, glasses, hearing protection', ''], ['Gloves and knee pads', '']]]
+    ]},
+    { id: 'drywall', name: 'Drywall', groups: [
+      ['Cutting and hanging', [
+        ['48" drywall T-square', ''], ['Drywall saw / jab saw', ''], ['Utility knives and spare blades', ''], ['Rotary cutout tool (outlets and boxes)', ''],
+        ['Drywall screw gun', 'with depth setting'], ['Drywall panel lift / hoist', ''], ['Drywall hatchet and rasp', ''], ['Stilts', 'optional']]],
+      ['Taping and mudding', [
+        ['Taping knives: 6", 10", 12"', ''], ['Mud pan, stainless', ''], ['Hawk', ''], ['Finishing knife, 12" to 14"', ''], ['Inside corner tool', ''],
+        ['Outside corner tool', ''], ['Corner trowel', ''], ['Automatic taper / banjo', 'optional'], ['Mud mixer paddle and 5 gal buckets', '']]],
+      ['Sanding and cleanup', [
+        ['Pole sander with 120 to 150 grit screens', ''], ['Dust-free vacuum sander', ''], ['HEPA shop vacuum', ''], ['Hand sanding sponges', ''], ['Respirator or N95 / P100 masks', ''],
+        ['Plastic sheeting and tarps', ''], ['Brooms and dust pan', '']]],
+      ['Materials on hand', [
+        ['Joint compound: all-purpose, setting, topping', ''], ['Paper and mesh tape', ''], ['Corner bead', ''], ['Screws and trim-head fasteners', '']]]
+    ]},
+    { id: 'shape', name: 'Tile Shaping Tools', note: 'Notching, holes, curves and edge shaping after the main cut.', groups: [
+      ['Notching and curves', [
+        ['Wheeled tile nippers', ''], ['Carbide rod saw and frame', ''], ['Angle grinder with variable speed', ''], ['Diamond cup wheel (grinding)', ''],
+        ['Turbo-rim diamond blade for grinder', ''], ['Jigsaw with diamond or carbide-grit blade', ''], ['Contour gauge', ''], ['Tile files and rasps', '']]],
+      ['Holes and cores', [
+        ['Diamond hole saws, 3/8" to 4"', ''], ['Core drill bits (wet)', ''], ['Spear-point glass and tile bits', ''], ['Drill guide / suction cup jig', ''], ['Hammer-free (rotary) drill with water bottle', '']]],
+      ['Edges and profiles', [
+        ['Rubbing stone (carborundum)', ''], ['Bullnose / edge profile wheels', ''], ['Chamfer and bevel wheels', ''], ['Dremel or rotary tool with diamond bits', '']]],
+      ['Layout', [
+        ['Tile scribe (carbide)', ''], ['Straight edge and square', ''], ['Marker for glazed tile', ''], ['Painter\'s tape for hole templates', '']]]
+    ]},
+    { id: 'cut', name: 'Tile Cutting Tools', groups: [
+      ['Wet saws', [
+        ['10" wet tile saw', 'with stand'], ['7" or 8" tabletop wet saw', 'optional'], ['Bridge saw for stone', 'optional'], ['Continuous-rim diamond blades (porcelain, ceramic)', ''],
+        ['Water pan, pump and splash guard', ''], ['Rolling stand and extension tables', '']]],
+      ['Manual cutters', [
+        ['Score-and-snap cutter, 24"', ''], ['Large-format cutter, 48" or longer', ''], ['Spare scoring wheels', ''], ['Tile and glass cutter wheel', '']]],
+      ['Handheld cutting', [
+        ['Angle grinder with dry-cut diamond blade', ''], ['Plunge-cut tile blade for multi-tool', ''], ['Grinder dust shroud and vacuum', '']]],
+      ['Guides and safety', [
+        ['Cut guides and straight edges', ''], ['Speed square and tape measure', ''], ['Respirator (P100) and eye protection', ''], ['Hearing protection', ''], ['Gloves, cut-resistant', '']]]
+    ]},
+    { id: 'polish', name: 'Tile Polishing Tools', groups: [
+      ['Power polishers', [
+        ['Variable-speed wet polisher', 'e.g. Makita PW5001C class'], ['Angle grinder, variable speed (dry polish)', ''], ['Water feed / spray bottle', ''],
+        ['Hook-and-loop backer pads', '']]],
+      ['Pads and abrasives', [
+        ['Diamond polishing pads, 50 to 3000 grit', ''], ['Resin edge polishing pads', ''], ['Silicon carbide wet / dry sandpaper', ''],
+        ['Hand polishing pads (edges)', ''], ['Rubbing bricks', '']]],
+      ['Finishing products', [
+        ['Polishing compound', ''], ['Penetrating sealer / impregnator', ''], ['Haze remover', ''], ['Grout sealer and applicator', '']]],
+      ['Cleanup', [
+        ['Microfiber towels', ''], ['Sponges and buckets', ''], ['Wet / dry vacuum', ''], ['Squeegee', ''], ['Respirator and eye protection', '']]]
+    ]},
+    { id: 'light', name: 'Light Electrical', note: 'Check what your license covers before taking electrical scope. Most NH wiring work needs a licensed electrician.', groups: [
+      ['Hand tools', [
+        ['Insulated screwdriver set (1000 V)', ''], ['Insulated nut drivers', ''], ['Lineman\'s pliers', ''], ['Needle-nose pliers', ''],
+        ['Diagonal cutters', ''], ['Wire strippers, 10 to 18 AWG', ''], ['Cable ripper (NM)', ''], ['Torque screwdriver', 'for breakers and terminals']]],
+      ['Running wire', [
+        ['Fish tape, 25 to 50 ft', ''], ['Glow rods', ''], ['Drill bits and long flex bit', ''], ['Hole saws for boxes', ''],
+        ['Cable staple gun / staples', ''], ['Keyhole saw / drywall saw', ''], ['Conduit bender (1/2")', 'optional']]],
+      ['Connectors and parts', [
+        ['Wire nuts and lever connectors', ''], ['Old-work and new-work boxes', ''], ['Cover plates and screws', ''], ['Electrical tape and labels', ''], ['Wire and cable assortment', '']]],
+      ['Light and safety', [
+        ['Headlamp and work light', ''], ['Lockout / tagout kit', ''], ['Class 0 insulated gloves', ''], ['Safety glasses', '']]]
+    ]},
+    { id: 'diag', name: 'Electrical Diag', groups: [
+      ['Testers and meters', [
+        ['Digital multimeter, CAT III', ''], ['Clamp meter (AC/DC amps)', ''], ['Non-contact voltage tester', ''], ['Two-pole voltage tester (Wiggy style)', ''],
+        ['Receptacle tester with GFCI test', ''], ['AFCI / arc fault tester', 'optional'], ['Continuity tester', '']]],
+      ['Tracing and finding', [
+        ['Circuit breaker finder', ''], ['Wire tracer / tone generator and probe', ''], ['Thermal imaging camera', ''], ['Infrared thermometer', ''], ['Stud and live wire detector', '']]],
+      ['Advanced', [
+        ['Insulation resistance tester (megohmmeter)', 'optional'], ['Phase rotation / outlet analyzer', 'optional'], ['Inspection camera / borescope', '']]],
+      ['Supplies and safety', [
+        ['Test leads, probes and alligator clips', ''], ['Spare batteries', ''], ['Lockout / tagout kit', ''], ['Insulated gloves and eye protection', ''], ['Notebook or label maker for circuit directories', '']]]
+    ]}
+    ];
+    function load() { try { var s = JSON.parse(localStorage.getItem(KEY)); if (s && typeof s === 'object') { s.st = s.st || {}; s.custom = s.custom || {}; s.hidden = s.hidden || {}; return s; } } catch (e) {} return { st: {}, custom: {}, hidden: {} }; }
+    function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+    function g(id) { return document.getElementById('tl-' + id); }
+    function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    function items(cat) {
+      var out = [];
+      cat.groups.forEach(function (gr) { gr[1].forEach(function (it) { var id = cat.id + '|' + it[0]; if (!S.hidden[id]) out.push({ id: id, n: it[0], d: it[1], g: gr[0] }); }); });
+      (S.custom[cat.id] || []).forEach(function (n) { out.push({ id: cat.id + '|c|' + n, n: n, d: '', g: 'Added by you' }); });
+      return out;
+    }
+    function stateOf(id) { return S.st[id] || ''; }
+    function visible(it) {
+      var s = stateOf(it.id);
+      if (filter === 'need' && s !== 'need') return false;
+      if (filter === 'have' && s !== 'have') return false;
+      if (query && (it.n + ' ' + it.d).toLowerCase().indexOf(query) < 0) return false;
+      return true;
+    }
+    function build() {
+      g0().innerHTML =
+        '<div class="bar" style="margin-top:14px"><input type="search" id="tl-q" placeholder="Search tools" aria-label="Search tools">' +
+        '<button class="alt small" id="tl-f-all">All</button><button class="alt small" id="tl-f-need">Need</button><button class="alt small" id="tl-f-have">Have</button>' +
+        '<button class="alt small" id="tl-shopbtn">Shopping list</button><button class="go small" id="tl-print">Print / save as PDF</button></div>' +
+        '<div class="tl-totals" id="tl-totals"></div><section class="card" id="tl-shop" hidden></section><div id="tl-cats"></div>' +
+        '<p class="muted">Starter lists. Tap a tool\'s box to cycle blank, Have, Need. Add or remove anything to match what FLFC really carries. Saved on this device only.</p>';
+      wire(); render();
+    }
+    function g0() { return document.getElementById('toolTab'); }
+    function render() {
+      var all = 0, have = 0, need = 0, html = '', shopping = trade === 'shop';
+      CATS.forEach(function (cat) {
+        var its = items(cat), h = 0, nd = 0;
+        its.forEach(function (it) { var s = stateOf(it.id); if (s === 'have') h++; if (s === 'need') nd++; });
+        all += its.length; have += h; need += nd;
+        var vis = its.filter(visible);
+        if (shopping || (trade !== 'all' && cat.id !== trade)) return;
+        if ((filter !== 'all' || query) && !vis.length) return;
+        var open = openIds[cat.id] || filter !== 'all' || query || trade === cat.id;
+        html += '<details class="tl-cat" data-cat="' + cat.id + '"' + (open ? ' open' : '') + '><summary><h2>' + esc(cat.name) + '</h2>' +
+          '<span class="tl-count"><b>' + nd + ' need</b> &middot; ' + h + ' have &middot; ' + its.length + ' total</span></summary><div class="tl-items">';
+        if (cat.note) html += '<div class="tl-note">' + esc(cat.note) + '</div>';
+        var lastG = null;
+        vis.forEach(function (it) {
+          if (it.g !== lastG) { html += '<h3>' + esc(it.g) + '</h3>'; lastG = it.g; }
+          var s = stateOf(it.id);
+          html += '<div class="tl-item ' + s + '"><button class="tl-st ' + s + '" data-id="' + esc(it.id) + '" title="Click to cycle">' + (s === 'have' ? 'Have' : s === 'need' ? 'Need' : '&mdash;') + '</button>' +
+            '<div class="tl-nm"><span class="n">' + esc(it.n) + '</span>' + (it.d ? '<span class="d">' + esc(it.d) + '</span>' : '') + '</div>' +
+            '<button class="tl-del" data-del="' + esc(it.id) + '" title="Remove from list">&times;</button></div>';
+        });
+        html += '<div class="tl-add"><input data-add="' + cat.id + '" placeholder="Add a tool to ' + esc(cat.name) + '"><button class="small alt" data-addbtn="' + cat.id + '">Add</button></div></div></details>';
+      });
+      g('cats').innerHTML = html || '<p class="muted">Nothing matches.</p>';
+      g('totals').innerHTML = '<div class="tl-chip">Tools <b>' + all + '</b></div><div class="tl-chip">Have <b style="color:var(--green)">' + have + '</b></div><div class="tl-chip">Need to buy <b style="color:#b4691f">' + need + '</b></div>';
+      ['all', 'need', 'have'].forEach(function (f) { g('f-' + f).className = (filter === f ? 'go' : 'alt') + ' small'; });
+      g('shopbtn').className = (shopping ? 'go' : 'alt') + ' small'; tabLabel();
+      var shop = g('shop');
+      if (shopping) {
+        var sh = '<h2>Shopping list</h2>', any = false;
+        CATS.forEach(function (cat) {
+          var n = items(cat).filter(function (it) { return stateOf(it.id) === 'need'; });
+          if (!n.length) return; any = true;
+          sh += '<h3>' + esc(cat.name) + '</h3><ul>' + n.map(function (it) { return '<li>' + esc(it.n) + (it.d ? ' <span class="muted">(' + esc(it.d) + ')</span>' : '') + '</li>'; }).join('') + '</ul>';
+        });
+        if (!any) sh += '<p class="muted">Nothing marked Need yet. Tap a tool\'s box until it says Need.</p>';
+        shop.innerHTML = sh; shop.hidden = false;
+      } else shop.hidden = true;
+    }
+    function addTool(cid) {
+      var inp = document.querySelector('#tl-cats [data-add="' + cid + '"]'), v = inp.value.trim(); if (!v) return;
+      S.custom[cid] = S.custom[cid] || []; if (S.custom[cid].indexOf(v) < 0) S.custom[cid].push(v);
+      openIds[cid] = true; save(); render();
+    }
+    function wire() {
+      g('cats').addEventListener('toggle', function (e) { var d = e.target; if (d.dataset && d.dataset.cat) openIds[d.dataset.cat] = d.open; }, true);
+      g('cats').addEventListener('click', function (e) {
+        var b = e.target.closest('[data-id]');
+        if (b) { var id = b.dataset.id, s = S.st[id] || '', nx = s === '' ? 'have' : s === 'have' ? 'need' : ''; if (nx) S.st[id] = nx; else delete S.st[id]; save(); render(); return; }
+        var d = e.target.closest('[data-del]');
+        if (d) {
+          var id2 = d.dataset.del;
+          if (id2.indexOf('|c|') > 0) { var cid = id2.split('|')[0], nm = id2.slice(cid.length + 3); S.custom[cid] = (S.custom[cid] || []).filter(function (x) { return x !== nm; }); }
+          else S.hidden[id2] = 1;
+          delete S.st[id2]; save(); render(); return;
+        }
+        var a = e.target.closest('[data-addbtn]'); if (a) addTool(a.dataset.addbtn);
+      });
+      g('cats').addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.dataset.add) addTool(e.target.dataset.add); });
+      g('q').addEventListener('input', function () { query = this.value.trim().toLowerCase(); render(); });
+      ['all', 'need', 'have'].forEach(function (f) { g('f-' + f).addEventListener('click', function () { filter = f; render(); }); });
+      g('shopbtn').addEventListener('click', function () { trade = trade === 'shop' ? 'all' : 'shop'; render(); });
+      g('print').addEventListener('click', printLists);
+    }
+    function printLists() {
+      var shopping = trade === 'shop', ds = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }), body = '';
+      CATS.forEach(function (cat) {
+        if (!shopping && trade !== 'all' && cat.id !== trade) return;
+        var its = items(cat).filter(function (it) { return shopping ? stateOf(it.id) === 'need' : true; });
+        if (!its.length) return;
+        body += '<div style="break-inside:avoid"><h3 style="margin:16px 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:#3e2c1f;border-bottom:2px solid #3e2c1f">' + esc(cat.name) + '</h3>';
+        var lastG = null;
+        its.forEach(function (it) {
+          if (!shopping && it.g !== lastG) { body += '<div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#777;margin:8px 0 2px">' + esc(it.g) + '</div>'; lastG = it.g; }
+          var s = stateOf(it.id);
+          body += '<div style="font-size:13px;padding:3px 0;border-bottom:1px solid #e3e3e3;display:flex;gap:8px"><span style="font-size:15px">' + (shopping ? '&#9744;' : s === 'have' ? '&#9745;' : '&#9744;') + '</span><span>' + esc(it.n) + (it.d ? ' <span style="color:#777;font-size:12px">(' + esc(it.d) + ')</span>' : '') + (!shopping && s === 'need' ? ' <b style="color:#b4691f;font-size:11px">NEED</b>' : '') + '</span></div>';
+        });
+        body += '</div>';
+      });
+      if (!body) body = '<p style="font-size:13px;color:#555">Nothing marked Need yet.</p>';
+      var html = '<div style="font-family:Segoe UI,Arial,sans-serif;color:#111;padding:10px;max-width:720px;margin:0 auto"><div style="border-bottom:3px solid #3e2c1f;padding-bottom:8px">' +
+        '<div style="font-size:20px;font-weight:700;color:#3e2c1f">Fourth Light Farm Construction, LLC</div><div style="font-size:15px">' + (shopping ? 'Tool shopping list' : 'Tool lists') + '</div><div style="font-size:12px;color:#666">Prepared ' + esc(ds) + '</div></div>' + body + '</div>';
+      var pr = document.getElementById('printRoot'); pr.innerHTML = html;
+      document.body.classList.add('estprint');
+      var clean = function () { document.body.classList.remove('estprint'); pr.innerHTML = ''; window.removeEventListener('afterprint', clean); };
+      window.addEventListener('afterprint', clean); window.print();
+    }
+    // ---- drop-down menu on the tab bar ----
+    function catName(id) { for (var i = 0; i < CATS.length; i++) if (CATS[i].id === id) return CATS[i].name; return ''; }
+    function tabLabel() {
+      var b = document.getElementById('tabTool'); if (!b) return;
+      b.textContent = 'Tools' + (trade === 'all' ? '' : ': ' + (trade === 'shop' ? 'Shopping list' : catName(trade))) + ' \u25BE';
+    }
+    function pick(id) { trade = id; if (built) render(); else tabLabel(); }
+    function initMenu() {
+      var dd = document.getElementById('ddTool'), b = document.getElementById('tabTool'); if (!dd || !b) return;
+      dd.innerHTML = '<button data-pick="all">All trades</button>' + CATS.map(function (c) { return '<button data-pick="' + c.id + '">' + esc(c.name) + '</button>'; }).join('') + '<button data-pick="shop" style="border-top:1px solid var(--line)">Shopping list</button>';
+      b.addEventListener('click', function (e) { e.stopPropagation(); dd.hidden = !dd.hidden; });
+      dd.addEventListener('click', function (e) {
+        var p = e.target.closest('[data-pick]'); if (!p) return;
+        dd.hidden = true; showTab('tool'); pick(p.dataset.pick);
+      });
+      document.addEventListener('click', function (e) { if (!dd.hidden && !e.target.closest('.tl-dd')) dd.hidden = true; });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape') dd.hidden = true; });
+    }
+    initMenu();    window.toolsTab = function () { if (!built) { S = load(); built = true; build(); } };
+  })();
 
   // ---------- Overhead tab: yearly overhead -> cost per billable hour, weekly minimum and goal, markup, one-job price, PDF report ----------
   // Private: numbers stay in this browser only (nothing is sent to the backend).
