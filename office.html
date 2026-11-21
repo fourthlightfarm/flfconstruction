@@ -9,7 +9,28 @@
     :root { --brown:#3e2c1f; --green:#5f7452; --sage:#b8c5a8; --tan:#e8e3d5; --cream:#f5f2ea; --ink:#2b2423; --muted:#6b6359; --line:#d9d2c0; --red:#a33a2b; --ok:#2f5a2b; }
     * { box-sizing: border-box; }
     body { margin:0; font-family:'Segoe UI',Tahoma,Arial,sans-serif; background:var(--cream); color:var(--ink); font-size:15px; }
-    main { max-width:980px; margin:0 auto; padding:16px 14px 60px; }
+    main { max-width:none; margin:0; padding:16px 20px 60px; }
+    .shell { display:flex; gap:22px; align-items:flex-start; }
+    .col { flex:1 1 0; min-width:0; max-width:1000px; }
+    /* Help window: sits to the right of the page; becomes a slide-over on narrower screens */
+    #help { flex:0 0 390px; width:390px; position:sticky; top:12px; max-height:calc(100vh - 24px); overflow:auto; background:#fff; border:1px solid var(--line); border-radius:10px; box-shadow:0 4px 16px rgba(0,0,0,.08); }
+    @media (max-width:1180px) { #help { position:fixed; top:0; right:0; bottom:0; width:min(420px,100%); max-height:none; border-radius:0; z-index:60; box-shadow:-6px 0 24px rgba(0,0,0,.28); } }
+    #help .hp-head { position:sticky; top:0; background:var(--brown); color:#fff; padding:10px 12px; display:flex; align-items:center; gap:8px; z-index:2; }
+    #help .hp-head b { flex:1; font-size:15px; }
+    #help .hp-head button { background:#fff; color:var(--brown); border:0; }
+    #help .hp-body { padding:12px 16px 20px; }
+    #help .hp-chips { display:flex; flex-wrap:wrap; gap:5px; margin:0 0 12px; }
+    #help .hp-chips button { min-height:26px; padding:2px 9px; font-size:12px; border-radius:13px; }
+    #help h3 { margin:16px 0 8px; font-size:12.5px; }
+    #help p { margin:0 0 10px; line-height:1.45; }
+    #help ol { list-style:none; counter-reset:hs; padding:0; margin:0; }
+    #help ol li { counter-increment:hs; position:relative; padding:0 0 12px 36px; line-height:1.45; }
+    #help ol li::before { content:counter(hs); position:absolute; left:0; top:0; width:25px; height:25px; border-radius:50%; background:var(--green); color:#fff; font-weight:700; font-size:13px; text-align:center; line-height:25px; }
+    #help ol li b { display:block; color:var(--brown); }
+    #help .hp-ex { background:var(--tan); border-left:4px solid var(--green); border-radius:6px; padding:10px 12px; line-height:1.5; }
+    #help .hp-watch { background:#fbf1e3; color:#7a4a10; border-radius:6px; padding:8px 12px 8px 26px; margin:0; line-height:1.45; }
+    #help .hp-watch li { margin:3px 0; }
+    #tabHelp { margin-left:auto; border-radius:18px; font-weight:700; }
     h1 { font-size:22px; margin:0; color:var(--brown); }
     h2 { font-size:17px; margin:0 0 10px; color:var(--brown); }
     h3 { font-size:14px; margin:18px 0 6px; color:var(--brown); text-transform:uppercase; letter-spacing:.05em; }
@@ -165,6 +186,7 @@
 </head>
 <body>
 <main>
+<div class="shell"><div class="col">
   <h1>FLFC Office</h1>
   <p class="muted" style="margin:2px 0 0">Private. Customers, jobs, line items, invoices and messages for the customer portal.</p>
   <div id="banner" class="banner" hidden></div>
@@ -186,6 +208,7 @@
       <button id="tabEst" class="alt">Estimator</button>
       <button id="tabOh" class="alt">Overhead</button>
       <span class="tl-dd"><button id="tabTool" class="alt">Tools &#9662;</button><div class="ddm" id="ddTool" hidden></div></span>
+      <button id="tabHelp" class="alt" title="Show how to use the tab you are on" aria-expanded="false">? Help</button>
     </div>
     <div id="custTab">
     <div class="card bar">
@@ -230,6 +253,9 @@
     <div id="ohTab" hidden></div>
     <div id="toolTab" hidden></div>
   </div>
+</div>
+<aside id="help" hidden aria-label="How to use this tab"></aside>
+</div>
 </main>
 <div id="printRoot"></div>
 
@@ -1300,7 +1326,9 @@
     return d.toISOString().substring(0, 16);
   }
 
+  var curTab = 'cust';
   function showTab(which) {
+    curTab = which;
     $('custTab').hidden = which !== 'cust'; $('outTab').hidden = which !== 'out'; $('estTab').hidden = which !== 'est'; $('ohTab').hidden = which !== 'oh'; $('toolTab').hidden = which !== 'tool';
     $('tabCust').className = which === 'cust' ? 'go' : 'alt';
     $('tabOut').className = which === 'out' ? 'go' : 'alt';
@@ -1312,6 +1340,7 @@
     if (which === 'est') estimatorTab();
     if (which === 'oh') overheadTab();
     if (which === 'tool') toolsTab();
+    if (window.helpRefresh) window.helpRefresh();
   }
   $('tabCust').addEventListener('click', function () { showTab('cust'); });
   $('tabOut').addEventListener('click', function () { showTab('out'); });
@@ -2427,6 +2456,7 @@
       if (name === 'takeoff') { ensurePdfJs(); renderMeas(); drawOverlay(); updateScaleStatus(); }
       if (name === 'prices') fillPrices();
       if (name === 'quote') { renderQuote(); loadHandoffCustomers(); }
+      if (window.helpRefresh) window.helpRefresh();
     }
 
     // ----- estimate -----
@@ -3083,6 +3113,146 @@
       });
     };
     window.estimatorReset = function () { built = false; srv = null; P = null; S = null; saved = []; hoCusts = null; hoJobs = {}; clearTimeout(priceTimer); $('estTab').innerHTML = ''; clearPlan(); };
+  })();
+
+  // ---------- Help window: the "? Help" button opens a how-to for the tab you are working on ----------
+  (function () {
+    var HELP = {
+      cust: {
+        t: 'Customers and jobs',
+        intro: 'This is where each customer lives. A customer signs in to the portal with their private link and a 6-digit PIN, and they only ever see their own jobs, costs, invoices and updates.',
+        steps: [
+          ['Add the customer', 'Click <b style="display:inline">New customer</b>. Fill in name, phone, email and address. Type a 6-digit PIN or click <i>Random</i>. Click <i>Add customer</i>.'],
+          ['Send their login', 'Two boxes appear. Copy the welcome message and the PIN message and send them as <i>two separate</i> texts or emails, so the link and the PIN are never in the same message.'],
+          ['Open a customer', 'Pick their name in the drop-down at the top. Their jobs show as rows. Click a job row to open it.'],
+          ['Add what the job costs', 'Inside the job, under <i>Line items</i>, type a Category and a Description, pick the type, type the Amount and click <i>Add line item</i>. <i>Original</i> is in the first quote, <i>Change order</i> is something the customer asked to change, <i>Added</i> is anything else.'],
+          ['Keep them posted', 'Under <i>Project updates</i> type a short title and details and click <i>Add update</i>. Use <i>Photos and files</i> to add pictures.'],
+          ['Invoice them', 'Open the <i>Send invoice email</i> card. Pick the job. The total fills in from the line items. Click <i>Create Stripe invoice</i>, then <i>Send me a preview</i> to read it, then <i>Send to customer</i>.']
+        ],
+        ex: '<b>Jane Smith, kitchen backsplash.</b><br>Line items: Labor, Tile install, $1,200 (Original). Material, Tile and thinset, $600 (Original). She then asks for outlet covers: Change order, Outlet covers, $80.<br>The job card shows <b>Costs so far $1,880</b>, and the invoice total fills in as $1,880.',
+        watch: ['Each row has a <i>Show</i> box. If it is checked, the customer can see that row in their portal right away.', 'Delete job and Delete customer cannot be undone, so the page asks you to confirm first.', 'Pick a customer first. Nothing here changes until you click a button like Add or Save.']
+      },
+      out: {
+        t: 'Outreach: email many customers',
+        intro: 'Send one email to a group of customers: a seasonal check-in, an event invite, a promotion, or a message you write yourself. Work down the four cards in order.',
+        steps: [
+          ['Who gets it', 'Tick the customers, or click <i>Select everyone eligible</i>. Use the search box to find a name. Greyed-out customers have no email or are switched off for outreach.'],
+          ['What to send', 'Pick the kind in the drop-down, then fill in the boxes that appear. In a custom message, <b style="display:inline">{first}</b> becomes their first name.'],
+          ['When', 'Choose <i>Send now</i>, or <i>Schedule for</i> and pick a date and time. Times are Eastern.'],
+          ['Check it and send', 'Click <i>Show the message</i> to read it, then <i>Send me a preview</i> (this goes only to you). When it looks right, click the send button. It shows how many customers it will go to.']
+        ],
+        ex: '<b>Promotion.</b> Headline: <i>10% off fall deck builds</i>. Offer ends: <i>October 31</i>. The offer: <i>10% off labor on any deck started before October 31.</i><br>Tick 12 customers, choose Send now, send yourself a preview, read it, then send.',
+        watch: ['In a promotion, only what you type goes out. Spell out the terms.', 'A seasonal check-in skips anyone who already got that season\'s email.', 'Scheduled emails only go out if the hourly scheduler trigger is set up.']
+      },
+      'est-estimate': {
+        t: 'Estimator: Estimate',
+        intro: 'Build the price for a job. Add work, check the lines, read the totals, then save it. The totals update as you go.',
+        steps: [
+          ['Fill in the job', 'Customer, job name, address and date. The scope notes show on the quote, so say what is and is not included.'],
+          ['Quick add a work type', 'Pick a work type (like <i>Tile - floor</i>), type the quantity in its unit, set the waste %, click <i>Add to estimate</i>. It adds a labor line and a material line from the Price list.'],
+          ['Frame with the calculator', 'For lumber, use the <i>Framing calculator</i>. Pick what you are framing, type the length, spacing, height and openings, check the pieces it lists, then click <i>Add framing to estimate</i>.'],
+          ['Check the line items', 'Change any quantity or price. A labor line with a blank price uses your labor rate. The <i>+ Labor, + Material, + Dump, + Travel, + Other</i> buttons add your own lines.'],
+          ['Read the totals', 'You get the price for check or ACH, cash (discounted) and card (with the fee).'],
+          ['Take the Material list shopping', 'The <i>Material list</i> below the totals shows only what to buy. Use <i>Copy list</i> or <i>Print list</i>.'],
+          ['Save it', 'Type a name next to <i>Save this estimate as</i> and click Save. Open it again from the list below.']
+        ],
+        ex: '<b>Master bath floor, 60 SF</b> (starter numbers).<br>Work type <i>Tile - floor</i>, quantity 60, waste 10%.<br>Labor: 60 SF x 0.20 hr = 12 hrs x $150 = <b>$1,800</b>.<br>Material: 66 SF x $8 = <b>$528</b>.<br>Add + Dump $150 and + Travel $150. Total <b>$2,628</b>.',
+        watch: ['A line marked <i>starter values</i> uses placeholder prices. Put your real numbers in the Price list before you quote.', 'Waste % adds extra material (10% of 60 SF is 6 SF more).']
+      },
+      'est-takeoff': {
+        t: 'Estimator: Plan takeoff',
+        intro: 'Measure a plan on screen instead of with a tape. Open the drawing, tell it the scale, click your measurements, and send them straight to the estimate.',
+        steps: [
+          ['Open the plan', 'Click <i>Choose File</i> and pick a PDF or a picture of the plan.'],
+          ['Set the scale first', 'Click <i>1. Set scale</i>, click both ends of a dimension printed on the plan (like an 8\'-0" wall), type its real length (<i>8\'0"</i> or <i>96 in</i>) and click <i>Apply scale</i>.'],
+          ['Measure', '<i>Length (LF)</i>: click along a wall. <i>Area (SF)</i>: click each corner of a room. <i>Count (EA)</i>: click each window or door. Click <i>Finish</i> (or press Enter) after each one. <i>Undo point</i> backs up one click.'],
+          ['Choose how to figure it', 'Each measurement appears on the right. The drop-down lets you use a length as wall area (enter a height), an area as perimeter or wall area, or a count as an area each.'],
+          ['Add it to the estimate', 'Pick a work type and click <i>Add to estimate</i>. The waste % above the list is added to the material.'],
+          ['Framing lumber', 'On a room Area click <i>Frame the walls</i>. On a Count of openings click <i>Use as openings for framing</i>. Then finish in the Framing calculator on the Estimate tab.']
+        ],
+        ex: '<b>An 8 ft x 8 ft room with 3 windows and 1 door.</b><br>Area around the room: 64 SF, perimeter 32 LF.<br>Click <i>Frame the walls</i>: 32 LF and 4 corners are filled in.<br>Count just the 3 windows and the door, click <i>Use as openings</i>: 4 openings.<br>On the Estimate tab set height 8 ft and click <i>Add framing to estimate</i>.',
+        watch: ['Feet only show once the scale is set. If a plan was shrunk to fit letter paper, use two clicks on a known dimension instead of a printed scale.', 'Count only the things you want counted. Every click adds one.', 'Opening a different plan asks before it clears the old measurements.']
+      },
+      'est-prices': {
+        t: 'Estimator: Price list',
+        intro: 'These are the numbers every estimate is built from. Set them once and they save for you and sync across your devices.',
+        steps: [
+          ['Rates', 'Labor rate per hour, material markup %, contingency %, default dump and travel, cash discount %, card fee % and how many days a quote stays valid.'],
+          ['Framing lumber', 'Type what you pay per linear foot for each board size, how many labor hours it takes per piece, and the hardware %.'],
+          ['Work types', 'Each row is a kind of work. Set its unit (SF, LF, EA or HR), the labor hours for one unit and the material cost for one unit, and say what the material is.'],
+          ['Add or reset', '<i>+ Add work type</i> adds a row. <i>Reset to starter list</i> puts my placeholder rows back, so use it carefully.']
+        ],
+        ex: '<b>Tile - floor.</b> If your tiler sets 5 SF in an hour, labor hours per unit is 1 / 5 = <b>0.2</b>. If tile, thinset and grout cost $8 for every SF, material $ per unit is <b>8</b>.<br>A 2x4 x 8 ft at $0.90 per LF costs 0.90 x 8 = <b>$7.20</b> a board.',
+        watch: ['Rows marked <i>starter</i> are placeholders, not your real costs. Edit a row and the mark goes away.', 'Changes save by themselves a moment after you stop typing.']
+      },
+      'est-quote': {
+        t: 'Estimator: Quote and portal',
+        intro: 'Turn the estimate into something to hand the customer, and put the numbers into their portal job.',
+        steps: [
+          ['Look at the quote', 'The preview is what the customer sees. Tick <i>Show every line item</i> to list each line. Leave it off to show only Labor, Materials, Dump and Travel totals.'],
+          ['Give it to them', '<i>Print / save as PDF</i> makes a clean page. <i>Copy quote text</i> copies it so you can paste it into an email or text.'],
+          ['Put it in their portal', 'Under <i>Send to a customer\'s portal job</i> choose the Customer and the Job, then click <i>Add to portal job</i>. It asks you to tap again, because the customer sees it right away.'],
+          ['Carry on to the invoice', 'Click <i>Open this customer</i> to jump to their card. The invoice total there fills in from these lines.']
+        ],
+        ex: 'Master bath, total $2,628. Choose <i>Jane Smith</i> and <i>Master bath</i>, click Add to portal job and tap again. The labor, material, dump and travel lines now show on her portal. Click Open this customer, then create the invoice.',
+        watch: ['Nothing is invoiced or emailed from this page.', 'If you post the same estimate to the same job twice, it warns you first.', 'Check that no line is marked <i>starter</i> before a customer sees it.']
+      },
+      oh: {
+        t: 'Overhead',
+        intro: 'Finds out what an hour of work really costs you, what you have to bill every week just to break even, and what to charge for one job. Everything stays on this device and is never sent anywhere.',
+        steps: [
+          ['Yearly overhead', 'List the costs that are not tied to one job: insurance, truck, fuel you do not bill, tools, phone, software, accounting, advertising. Type each amount and pick how often you pay it. The <i>Per year</i> column does the math. <i>+ Add a cost</i> adds a row.'],
+          ['Crew hours and goals', 'Fill in the people who bill hours (include yourself), hours per week each, weeks worked per year, billable %, wage plus burden per paid hour, the rate you bill, your profit target and your weekly goal.'],
+          ['Read the results', '<i>Weekly minimum</i> is what you must bill each week to cover overhead and pay with zero profit. <i>Cost per billed hour</i> and <i>Rate for your profit</i> show what an hour must earn. Any amber messages tell you when the goal does not fit the crew\'s hours.'],
+          ['Price one job', 'Type the labor hours, the material and sub cost, and dump, travel and other costs. It shows the job cost, the price that gives your profit target, and the profit.'],
+          ['Share it', '<i>Print / save as PDF</i> at the top makes a one-page report.']
+        ],
+        ex: '<b>Starter numbers:</b> 2 people x 40 hrs x 46 weeks = 3,680 paid hours. At 70% billable that is 2,576 billable hours.<br>$19,200 of yearly overhead / 2,576 hrs = <b>about $7.45</b> of overhead on every billed hour.<br>Add $57.14 of wage per billed hour and the job costs <b>$64.59 an hour</b>. For 10% profit you need <b>$71.77</b> an hour.',
+        watch: ['<i>Billable %</i> is the share of paid hours you can charge for. Driving, quoting, buying material and rain days are not billable, so 60 to 75 is normal.', 'Burden is payroll tax, workers comp and benefits on top of wage.', 'Leave out materials and subs you charge straight to a job, so they are not counted twice.', 'Rows marked <i>starter numbers</i> are placeholders. Change any number and the mark goes away.']
+      },
+      tool: {
+        t: 'Tools',
+        intro: 'A checklist of tools for each trade. Mark what you have, mark what you need to buy, and print a shopping list.',
+        steps: [
+          ['Pick a trade', 'Use the <i>Tools</i> menu on the tab bar to jump to one trade, or choose All trades.'],
+          ['Mark each tool', 'Tap the box next to a tool. It cycles <i>blank, Have, Need</i>.'],
+          ['Make the shopping list', 'Click <i>Shopping list</i> to see everything marked Need. <i>Print / save as PDF</i> makes a checklist to take to the store. The <i>All, Need, Have</i> buttons and the search box filter the list.'],
+          ['Add your own tool', 'Click <i>+ Add here</i> on the right of any group heading, type the name and press Enter. Or use the row at the bottom of the trade, choose a group (or <i>+ New group</i>) and click Add.'],
+          ['Remove a tool', 'Click the x at the end of its row.']
+        ],
+        ex: '<b>Plumbing, Wrenches and turning:</b> click <i>+ Add here</i>, type <i>Basin wrench</i>, press Enter. Tap its box twice so it says <b>Need</b>. Open <i>Shopping list</i> and it is there.',
+        watch: ['These lists are saved on this device only.', 'The starter lists are suggestions. Remove or add tools until they match what FLFC really carries.']
+      }
+    };
+    var ORDER = [['cust', 'Customers'], ['out', 'Outreach'], ['est-estimate', 'Estimate'], ['est-takeoff', 'Plan takeoff'], ['est-prices', 'Price list'], ['est-quote', 'Quote'], ['oh', 'Overhead'], ['tool', 'Tools']];
+    var isOpen = false, forced = null, el = document.getElementById('help'), btn = document.getElementById('tabHelp');
+    function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    function currentKey() {
+      var tab = typeof curTab === 'string' ? curTab : 'cust';
+      if (tab !== 'est') return tab;
+      var subs = ['estimate', 'takeoff', 'prices', 'quote'];
+      for (var i = 0; i < subs.length; i++) { var s = document.getElementById('e-sec-' + subs[i]); if (s && !s.hidden) return 'est-' + subs[i]; }
+      return 'est-estimate';
+    }
+    function render() {
+      var key = forced || currentKey(), h = HELP[key] || HELP.cust;
+      el.innerHTML =
+        '<div class="hp-head"><b>How to use: ' + esc(h.t) + '</b><button class="small" id="hp-x" aria-label="Close help">Close</button></div>' +
+        '<div class="hp-body"><div class="hp-chips">' + ORDER.map(function (o) { return '<button class="' + (o[0] === key ? 'go' : 'alt') + '" data-k="' + o[0] + '">' + esc(o[1]) + '</button>'; }).join('') + '</div>' +
+        '<p>' + h.intro + '</p><h3>Steps</h3><ol>' + h.steps.map(function (s) { return '<li><b>' + s[0] + '</b>' + s[1] + '</li>'; }).join('') + '</ol>' +
+        '<h3>Example</h3><div class="hp-ex">' + h.ex + '</div>' +
+        '<h3>Watch out for</h3><ul class="hp-watch">' + h.watch.map(function (w) { return '<li>' + w + '</li>'; }).join('') + '</ul>' +
+        '<p class="muted" style="margin-top:14px">This window follows you when you change tabs. Use the small buttons at the top to read help for any other tab.</p></div>';
+      el.scrollTop = 0;
+    }
+    function setOpen(v) { isOpen = v; el.hidden = !v; btn.setAttribute('aria-expanded', v ? 'true' : 'false'); btn.className = v ? 'go' : 'alt'; if (v) render(); }
+    btn.addEventListener('click', function () { forced = null; setOpen(!isOpen); });
+    el.addEventListener('click', function (e) {
+      if (e.target.closest('#hp-x')) { setOpen(false); return; }
+      var c = e.target.closest('[data-k]'); if (c) { forced = c.dataset.k; render(); }
+    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && isOpen && !e.target.closest('input,select,textarea')) setOpen(false); });
+    window.helpRefresh = function () { forced = null; if (isOpen) render(); };
   })();
 
   (function init() {
