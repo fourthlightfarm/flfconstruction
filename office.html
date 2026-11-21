@@ -100,7 +100,11 @@
     .tl-item.have .n { color:var(--green); }
     .tl-del { flex:0 0 auto; background:none; color:var(--red); border:0; min-height:0; padding:2px 8px; font-size:17px; }
     .tl-add { display:flex; gap:8px; margin-top:10px; }
-    .tl-add input { flex:1; }
+    .tl-add { flex-wrap:wrap; align-items:center; }
+    .tl-add input { flex:1 1 180px; }
+    .tl-add select { flex:0 1 220px; width:auto; }
+    .tl-here { float:right; background:none; color:var(--brown); border:0; min-height:0; padding:0 4px; font-size:12px; font-weight:600; text-transform:none; letter-spacing:0; cursor:pointer; }
+    .tl-here:hover { text-decoration:underline; }
     /* Overhead tab */
     #ohTab table { width:100%; border-collapse:collapse; }
     #ohTab th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); padding:3px 4px; }
@@ -1557,7 +1561,7 @@
   // Private to this browser; nothing is sent to the backend.
   (function () {
     var KEY = 'flfc_office_toollists_v1', built = false, S = null;
-    var filter = 'all', query = '', trade = 'all', openIds = {};
+    var filter = 'all', query = '', trade = 'all', openIds = {}, addGrp = {};
     var CATS = [
     { id: 'plumb', name: 'Plumbing', groups: [
       ['Cutting and joining', [
@@ -1710,10 +1714,23 @@
     function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
     function g(id) { return document.getElementById('tl-' + id); }
     function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    // Custom tools are saved as { n, g, d } (name, group, note). Older saves are plain strings and land in "Added by you".
+    function customOf(cid) {
+      return (S.custom[cid] || []).map(function (x) { return typeof x === 'string' ? { n: x, g: 'Added by you', d: '' } : { n: x.n, g: x.g || 'Added by you', d: x.d || '' }; });
+    }
+    function groupNames(cat) {
+      var names = cat.groups.map(function (gr) { return gr[0]; });
+      customOf(cat.id).forEach(function (c) { if (names.indexOf(c.g) < 0) names.push(c.g); });
+      return names;
+    }
     function items(cat) {
-      var out = [];
-      cat.groups.forEach(function (gr) { gr[1].forEach(function (it) { var id = cat.id + '|' + it[0]; if (!S.hidden[id]) out.push({ id: id, n: it[0], d: it[1], g: gr[0] }); }); });
-      (S.custom[cat.id] || []).forEach(function (n) { out.push({ id: cat.id + '|c|' + n, n: n, d: '', g: 'Added by you' }); });
+      var out = [], cust = customOf(cat.id);
+      function addCustom(gname) { cust.forEach(function (c) { if (c.g === gname) out.push({ id: cat.id + '|c|' + c.n, n: c.n, d: c.d, g: gname }); }); }
+      cat.groups.forEach(function (gr) {
+        gr[1].forEach(function (it) { var id = cat.id + '|' + it[0]; if (!S.hidden[id]) out.push({ id: id, n: it[0], d: it[1], g: gr[0] }); });
+        addCustom(gr[0]);
+      });
+      groupNames(cat).slice(cat.groups.length).forEach(addCustom);
       return out;
     }
     function stateOf(id) { return S.st[id] || ''; }
@@ -1749,13 +1766,17 @@
         if (cat.note) html += '<div class="tl-note">' + esc(cat.note) + '</div>';
         var lastG = null;
         vis.forEach(function (it) {
-          if (it.g !== lastG) { html += '<h3>' + esc(it.g) + '</h3>'; lastG = it.g; }
+          if (it.g !== lastG) { html += '<h3>' + esc(it.g) + '<button class="tl-here" data-here="' + cat.id + '" data-g="' + esc(it.g) + '" title="Add a tool to this group">+ Add here</button></h3>'; lastG = it.g; }
           var s = stateOf(it.id);
           html += '<div class="tl-item ' + s + '"><button class="tl-st ' + s + '" data-id="' + esc(it.id) + '" title="Click to cycle">' + (s === 'have' ? 'Have' : s === 'need' ? 'Need' : '&mdash;') + '</button>' +
             '<div class="tl-nm"><span class="n">' + esc(it.n) + '</span>' + (it.d ? '<span class="d">' + esc(it.d) + '</span>' : '') + '</div>' +
             '<button class="tl-del" data-del="' + esc(it.id) + '" title="Remove from list">&times;</button></div>';
         });
-        html += '<div class="tl-add"><input data-add="' + cat.id + '" placeholder="Add a tool to ' + esc(cat.name) + '"><button class="small alt" data-addbtn="' + cat.id + '">Add</button></div></div></details>';
+        var gn = groupNames(cat), pick0 = addGrp[cat.id] && (addGrp[cat.id] === '__new' || gn.indexOf(addGrp[cat.id]) >= 0) ? addGrp[cat.id] : gn[0];
+        html += '<div class="tl-add"><input data-add="' + cat.id + '" placeholder="New tool name" aria-label="New tool name">' +
+          '<select data-addgrp="' + cat.id + '" aria-label="Group">' + gn.map(function (n) { return '<option value="' + esc(n) + '"' + (n === pick0 ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '<option value="__new"' + (pick0 === '__new' ? ' selected' : '') + '>+ New group&hellip;</option></select>' +
+          '<input data-addnew="' + cat.id + '" placeholder="New group name"' + (pick0 === '__new' ? '' : ' hidden') + '>' +
+          '<button class="small alt" data-addbtn="' + cat.id + '">Add</button></div></div></details>';
       });
       g('cats').innerHTML = html || '<p class="muted">Nothing matches.</p>';
       g('totals').innerHTML = '<div class="tl-chip">Tools <b>' + all + '</b></div><div class="tl-chip">Have <b style="color:var(--green)">' + have + '</b></div><div class="tl-chip">Need to buy <b style="color:#b4691f">' + need + '</b></div>';
@@ -1774,9 +1795,18 @@
       } else shop.hidden = true;
     }
     function addTool(cid) {
-      var inp = document.querySelector('#tl-cats [data-add="' + cid + '"]'), v = inp.value.trim(); if (!v) return;
-      S.custom[cid] = S.custom[cid] || []; if (S.custom[cid].indexOf(v) < 0) S.custom[cid].push(v);
-      openIds[cid] = true; save(); render();
+      var inp = document.querySelector('#tl-cats [data-add="' + cid + '"]'), v = inp.value.trim(); if (!v) { inp.focus(); return; }
+      var sel = document.querySelector('#tl-cats [data-addgrp="' + cid + '"]'), grp = sel ? sel.value : 'Added by you';
+      if (grp === '__new') {
+        var ng = document.querySelector('#tl-cats [data-addnew="' + cid + '"]'), nv = ng ? ng.value.trim() : '';
+        if (!nv) { if (ng) { ng.focus(); ng.placeholder = 'Type a group name'; } return; }
+        grp = nv;
+      }
+      var cat = CATS.filter(function (c) { return c.id === cid; })[0];
+      if (cat && items(cat).some(function (it) { return it.n.toLowerCase() === v.toLowerCase(); })) { inp.value = ''; inp.placeholder = 'Already on this list: ' + v; inp.focus(); return; }
+      S.custom[cid] = S.custom[cid] || []; S.custom[cid].push({ n: v, g: grp });
+      addGrp[cid] = grp; openIds[cid] = true; save(); render();
+      var again = document.querySelector('#tl-cats [data-add="' + cid + '"]'); if (again) again.focus();
     }
     function wire() {
       g('cats').addEventListener('toggle', function (e) { var d = e.target; if (d.dataset && d.dataset.cat) openIds[d.dataset.cat] = d.open; }, true);
@@ -1786,11 +1816,21 @@
         var d = e.target.closest('[data-del]');
         if (d) {
           var id2 = d.dataset.del;
-          if (id2.indexOf('|c|') > 0) { var cid = id2.split('|')[0], nm = id2.slice(cid.length + 3); S.custom[cid] = (S.custom[cid] || []).filter(function (x) { return x !== nm; }); }
+          if (id2.indexOf('|c|') > 0) { var cid = id2.split('|')[0], nm = id2.slice(cid.length + 3); S.custom[cid] = (S.custom[cid] || []).filter(function (x) { return (typeof x === 'string' ? x : x.n) !== nm; }); }
           else S.hidden[id2] = 1;
           delete S.st[id2]; save(); render(); return;
         }
-        var a = e.target.closest('[data-addbtn]'); if (a) addTool(a.dataset.addbtn);
+        var a = e.target.closest('[data-addbtn]'); if (a) { addTool(a.dataset.addbtn); return; }
+        var hb = e.target.closest('[data-here]');
+        if (hb) {
+          e.preventDefault(); var hc = hb.dataset.here; addGrp[hc] = hb.dataset.g; render();
+          var hi = document.querySelector('#tl-cats [data-add="' + hc + '"]'); if (hi) { hi.scrollIntoView({ block: 'center' }); hi.focus(); }
+        }
+      });
+      g('cats').addEventListener('change', function (e) {
+        var s = e.target.closest('[data-addgrp]'); if (!s) return;
+        var c = s.dataset.addgrp; addGrp[c] = s.value;
+        var ng = document.querySelector('#tl-cats [data-addnew="' + c + '"]'); if (ng) { ng.hidden = s.value !== '__new'; if (!ng.hidden) ng.focus(); }
       });
       g('cats').addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.dataset.add) addTool(e.target.dataset.add); });
       g('q').addEventListener('input', function () { query = this.value.trim().toLowerCase(); render(); });
