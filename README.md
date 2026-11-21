@@ -8,8 +8,8 @@ Fourth Light Farm nonprofit site. That makes it easy to edit, including with an 
 know how to code.
 
 **Live at [flfconstruction.com](https://flfconstruction.com).** Business details (phone, email, service area,
-services, tagline) are filled in, the logo is real, and `portfolio.html` has 4 real project photos (all tile work
-so far) plus a "more coming soon" card for the other services.
+services, tagline) are filled in, the logo is real, and `portfolio.html` has 13 real project photos (tile, rot repair,
+a powder room remodel, a storm door, site work and a concrete slab) plus a "more coming soon" card.
 
 ## Making changes with an AI agent (no coding experience needed)
 
@@ -34,7 +34,7 @@ automatically.
 ## What's in this repo
 
 - `index.html` — the main page (home, about, services, community impact, contact)
-- `portfolio.html` — a gallery of past projects (4 real photos + a "more coming soon" card)
+- `portfolio.html` — a gallery of past projects (13 real photos + a "more coming soon" card)
 - `pricing.html` — "Project Pricing": a financing callout (links to our Enhancify financing page) plus a quote
   request form that opens the visitor's email app, pre-addressed to fourthlightfarm@gmail.com, with their project
   details filled in

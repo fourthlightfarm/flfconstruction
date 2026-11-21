@@ -12,7 +12,7 @@ Static HTML pages. No framework, no build step, no package manager, no dependenc
 
 - `index.html` — the main page: hero, about, services, community impact, and contact sections, plus a small inline
   `<script>` at the bottom for the mobile nav toggle and smooth scrolling.
-- `portfolio.html` — a gallery page of past projects. 4 real photo cards + 1 "more coming soon" card (see Known
+- `portfolio.html` — a gallery page of past projects. 13 real photo cards + 1 "more coming soon" card (see Known
   placeholders below). Each real photo sits in a `<button class="portfolio-thumb">` — clicking it opens a lightbox
   overlay (`#lightbox` markup near the end of the body, styles in `theme.css` under "Lightbox / Slideshow", JS at the
   bottom of the file) that lets visitors step through all `.portfolio-thumb` photos with prev/next buttons, arrow
@@ -80,12 +80,15 @@ classes) rather than introducing new layout systems.
 
 ## Known placeholders — flag these, don't silently invent real-looking values
 
-- `portfolio.html` now has 4 real project photos (added 2026-08-21, all tagged "Custom Tile" — a tub surround, a
-  pebble-floor walk-in shower, a frameless glass shower, and a marble-look bath remodel; files live in `images/`)
-  plus one "More Projects Coming Soon" card. Don't invent project names/locations for the real photos beyond what's
-  visibly true from the image, and don't invent fake completed projects for General Contracting, Rot Repair, or
-  Architectural Drafting — those categories have no real photos yet, so leave the "coming soon" card as-is until the
-  user supplies more.
+- `portfolio.html` now has 13 real project photos plus one "More Projects Coming Soon" card. The first 4 (added
+  2026-08-21, tagged "Custom Tile") are a tub surround, a pebble-floor walk-in shower, a frameless glass shower, and a
+  marble-look bath remodel. 9 more were added 2026-11-20 from the user's job photos: a three-photo Rot Repair set
+  (water damage found, opened up, finished wall), a powder room vanity before/after (Bathroom Remodel), a storm door
+  (Doors & Trim), a utility trench and site grading (Site Work), and a concrete slab (Concrete). Files live in
+  `images/`, resized to max 1600px and re-saved as JPEGs (camera metadata stripped). Don't invent project
+  names/locations for the real photos beyond what's visibly true from the image, and don't invent fake completed
+  projects for General Contracting or Architectural Drafting — those categories have no real photos yet, so leave the
+  "coming soon" card as-is until the user supplies more.
 - There is no license number displayed anywhere on the site — the user confirmed one isn't needed/applicable, so
   don't add one back in.
 
