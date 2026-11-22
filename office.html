@@ -2277,12 +2277,13 @@
       });
     }
     function cloneJ(o) { return JSON.parse(JSON.stringify(o)); }
-    function defaultPrices() { var asm = STARTER.map(function (a) { return cloneJ(a); }); return { labor: 150, markup: 0, cont: 0, dump: 150, travel: 150, cash: 10, card: 3, valid: 30, frame: defaultFrame(), asm: asm, bundles: defaultBundles(asm), hist: [] }; }
+    function defaultPrices() { var asm = STARTER.map(function (a) { return cloneJ(a); }); return { labor: 150, markup: 0, cont: 0, dump: 150, travel: 150, cash: 10, card: 3, valid: 30, oos: 20, frame: defaultFrame(), asm: asm, bundles: defaultBundles(asm), hist: [] }; }
     function freshActual() { return { g: {}, extra: '', note: '', done: false }; }
-    function freshState() { return { estId: '', job: { customer: '', job: '', address: '', date: new Date().toISOString().slice(0, 10), notes: '' }, items: [], takeoff: { file: '', cal: {}, meas: [] }, posted: null, actual: freshActual() }; }
+    function freshState() { return { estId: '', job: { customer: '', job: '', address: '', date: new Date().toISOString().slice(0, 10), notes: '', state: 'NH' }, items: [], takeoff: { file: '', cal: {}, meas: [] }, posted: null, actual: freshActual() }; }
     function fixState(s) {
       if (!s || !Array.isArray(s.items)) return freshState();
       if (!s.job) s.job = freshState().job;
+      if (!s.job.state) s.job.state = 'NH';
       if (!s.takeoff) s.takeoff = { file: '', cal: {}, meas: [] };
       if (!s.actual || typeof s.actual !== 'object') s.actual = freshActual();
       if (!s.actual.g) s.actual.g = {};
@@ -2347,7 +2348,10 @@
       S.items.forEach(function (it) { c[it.cat] = (c[it.cat] || 0) + lineTotal(it); if (it.cat === 'Labor') c.hours += num(it.qty); });
       c.sub = c.Labor + c.Material + c.Dump + c.Travel + c.Other;
       c.cont = c.sub * num(P.cont) / 100;
-      c.total = round2(c.sub + c.cont);
+      // Out of state (MA, VT, ME): add the surcharge to the total. The customer never sees it; it is folded into the Labor amount on the quote and portal.
+      c.oos = S.job.state && S.job.state !== 'NH' ? round2((c.sub + c.cont) * num(P.oos) / 100) : 0;
+      c.laborShown = c.Labor + c.oos;
+      c.total = round2(c.sub + c.cont + c.oos);
       c.cash = round2(c.total * (1 - num(P.cash) / 100));
       c.card = round2(c.total * (1 + num(P.card) / 100));
       c.donation = round2(c.total * 0.10);
@@ -2370,6 +2374,7 @@
           '<div><label>Job name</label><input id="e-j-job" placeholder="e.g. Master bath tile"></div>' +
           '<div><label>Address</label><input id="e-j-address"></div>' +
           '<div><label>Date</label><input id="e-j-date" type="date"></div></div>' +
+          '<label>Job state</label><div class="bar" id="e-j-state" style="margin:0">' + ['NH', 'MA', 'VT', 'ME'].map(function (s) { return '<button class="alt small" data-state="' + s + '" style="min-width:56px">' + s + '</button>'; }).join('') + '<span class="muted" id="e-j-statenote"></span></div>' +
           '<label>Scope notes (shown on the quote)</label><textarea id="e-j-notes" style="min-height:50px" placeholder="What is included, what is not"></textarea></section>' +
         '<section class="card"><h2>Quick add from a work type</h2><div class="rowf">' +
           '<div style="flex:2 1 220px"><label>Work type</label><select id="e-qa-asm"></select></div>' +
@@ -2453,8 +2458,9 @@
           '<div><label>Default travel ($)</label><input id="e-r-travel" type="number" min="0" step="any"></div>' +
           '<div><label>Cash discount %</label><input id="e-r-cash" type="number" min="0" step="any"></div>' +
           '<div><label>Card fee %</label><input id="e-r-card" type="number" min="0" step="any"></div>' +
-          '<div><label>Quote valid for (days)</label><input id="e-r-valid" type="number" min="1" step="1"></div></div>' +
-          '<p class="muted">Labor, dump and travel start at $150 from recent invoices. Markup and contingency start at 0.</p></section>' +
+          '<div><label>Quote valid for (days)</label><input id="e-r-valid" type="number" min="1" step="1"></div>' +
+          '<div><label>Out-of-state surcharge % (MA, VT, ME)</label><input id="e-r-oos" type="number" min="0" step="any"></div></div>' +
+          '<p class="muted">Labor, dump and travel start at $150 from recent invoices. Markup and contingency start at 0. The out-of-state surcharge is added to the total of jobs outside NH and is hidden inside Labor on the customer\'s quote.</p></section>' +
         '<section class="card" id="e-fp-card"><h2>Framing lumber</h2><div class="banner" id="e-fp-banner" style="background:#fbf1e3;color:#7a4a10" hidden>These are <b>starter</b> placeholder prices, not the real FLFC costs. Edit any number and this mark goes away.</div>' +
           '<div class="grid2">' +
             '<div><label>2x4 ($ per LF)</label><input id="e-fp-2x4" type="number" min="0" step="any"></div>' +
@@ -2677,6 +2683,7 @@
       if (c.Travel) h += '<div>Travel</div><div>' + fm(c.Travel) + '</div>';
       if (c.Other) h += '<div>Other</div><div>' + fm(c.Other) + '</div>';
       if (c.cont) h += '<div>Contingency (' + P.cont + '%)</div><div>' + fm(c.cont) + '</div>';
+      if (c.oos) h += '<div class="muted">Out of state, ' + esc(S.job.state) + ' (+' + P.oos + '%). Internal: the customer sees it inside Labor</div><div class="muted">' + fm(c.oos) + '</div>';
       h += '<div class="big">Total (check / ACH)</div><div class="big">' + fm(c.total) + '</div>';
       h += '<div>Cash (' + P.cash + '% off)</div><div>' + fm(c.cash) + '</div>';
       h += '<div>Card (+' + P.card + '%)</div><div>' + fm(c.card) + '</div>';
@@ -2740,6 +2747,8 @@
     }
     function renderEstimate() {
       Object.keys(JOBF).forEach(function (id) { $e(id).value = S.job[JOBF[id]] || ''; });
+      $$('#e-j-state [data-state]').forEach(function (b) { b.className = b.dataset.state === S.job.state ? 'go small' : 'alt small'; });
+      $e('j-statenote').textContent = S.job.state !== 'NH' ? '+' + P.oos + '% added to the total, hidden inside Labor for the customer.' : '';
       renderAsmSelect(); renderBundleSelect(); renderItems(); renderTotals(); renderSaved(); frInit(); frRender();
       var n = S.items.filter(function (i) { return i.starter; }).length, b = $e('starter');
       b.hidden = !n;
@@ -2809,7 +2818,7 @@
     }
 
     // ----- prices -----
-    var RATES = { 'r-labor': 'labor', 'r-markup': 'markup', 'r-cont': 'cont', 'r-dump': 'dump', 'r-travel': 'travel', 'r-cash': 'cash', 'r-card': 'card', 'r-valid': 'valid' };
+    var RATES = { 'r-labor': 'labor', 'r-markup': 'markup', 'r-cont': 'cont', 'r-dump': 'dump', 'r-travel': 'travel', 'r-cash': 'cash', 'r-card': 'card', 'r-valid': 'valid', 'r-oos': 'oos' };
     function fillPrices() {
       Object.keys(RATES).forEach(function (id) { $e(id).value = P[RATES[id]]; });
       fillFrame();
@@ -3031,11 +3040,13 @@
     // ----- quote -----
     function quoteLines() {
       var c = calc(), L = [];
+      var lf = c.Labor > 0 ? c.laborShown / c.Labor : 1;     // out-of-state surcharge rides inside the labor amounts
       if ($e('q-detail').checked) {
-        S.items.forEach(function (it) { L.push([it.desc || it.cat, num(it.qty) + ' ' + (it.unit || ''), round2(lineTotal(it)), it.cat]); });
+        S.items.forEach(function (it) { L.push([it.desc || it.cat, num(it.qty) + ' ' + (it.unit || ''), round2(lineTotal(it) * (it.cat === 'Labor' ? lf : 1)), it.cat]); });
         if (c.cont) L.push(['Contingency (' + P.cont + '%)', '', round2(c.cont), 'Other']);
+        if (c.oos && !(c.Labor > 0)) L.push(['Labor', '', round2(c.oos), 'Labor']);
       } else {
-        if (c.Labor) L.push(['Labor', round2(c.hours) + ' hrs', round2(c.Labor), 'Labor']);
+        if (c.laborShown) L.push(['Labor', round2(c.hours) + ' hrs', round2(c.laborShown), 'Labor']);
         if (c.Dump) L.push(['Dump', '', round2(c.Dump), 'Dump']);
         if (c.Material) L.push(['Materials', '', round2(c.Material), 'Material']);
         if (c.Travel) L.push(['Travel', '', round2(c.Travel), 'Travel']);
@@ -3063,7 +3074,7 @@
       var c = calc();
       return ['Customer: ' + (S.job.customer || '(not set)'), 'Job: ' + (S.job.job || '(not set)'), 'Invoice line item (one line): ' + (S.job.job || 'Services'),
         'Invoice total, check / ACH: ' + fm(c.total), 'Cash price: ' + fm(c.cash) + '    Card price: ' + fm(c.card),
-        'Portal breakdown: Labor ' + fm(c.Labor) + ' (' + round2(c.hours) + ' hrs), Dump ' + fm(c.Dump) + ', Material ' + fm(c.Material) + ', Travel ' + fm(c.Travel) + (c.Other ? ', Other ' + fm(c.Other) : '') + (c.cont ? ', Contingency ' + fm(c.cont) : ''),
+        'Portal breakdown: Labor ' + fm(c.laborShown) + ' (' + round2(c.hours) + ' hrs), Dump ' + fm(c.Dump) + ', Material ' + fm(c.Material) + ', Travel ' + fm(c.Travel) + (c.Other ? ', Other ' + fm(c.Other) : '') + (c.cont ? ', Contingency ' + fm(c.cont) : ''),
         'Invoice note: Itemized costs are in the customer portal.'].join('\n');
     }
     function renderQuote() { $e('quote').innerHTML = quoteHtml(); $e('handoff').textContent = handoffText(); $e('hdr').textContent = fm(calc().total); }
@@ -3119,6 +3130,10 @@
       var root = $('estTab');
       $e('sub').addEventListener('click', function (e) { if (e.target.dataset.sub) showSub(e.target.dataset.sub); });
       Object.keys(JOBF).forEach(function (id) { $e(id).addEventListener('input', function (e) { S.job[JOBF[id]] = e.target.value; saveDraft(); }); });
+      $e('j-state').addEventListener('click', function (e) {
+        var b = e.target.closest('[data-state]'); if (!b) return;
+        S.job.state = b.dataset.state; saveDraft(); renderEstimate();
+      });
       $e('qa-asm').addEventListener('change', renderAsmSelect);
       $e('qa-add').addEventListener('click', function () {
         if (addAssembly($e('qa-asm').value, num($e('qa-qty').value), num($e('qa-waste').value))) { $e('qa-qty').value = ''; renderEstimate(); toast('Added.'); }
@@ -3454,6 +3469,7 @@
         intro: 'Build the price for a job. Add work, check the lines, read the totals, then save it. The totals update as you go.',
         steps: [
           ['Fill in the job', 'Customer, job name, address and date. The scope notes show on the quote, so say what is and is not included.'],
+          ['Pick the job state', 'Click <i>NH, MA, VT or ME</i>. Anything outside NH adds the out-of-state surcharge (20% to start, change it in the Price list) to the total. The customer never sees it: it is folded into the Labor amount on the quote and in the portal.'],
           ['Quick add a work type', 'Pick a work type (like <i>Tile - floor</i>), type the quantity in its unit, set the waste %, click <i>Add to estimate</i>. It adds a labor line and a material line from the Price list.'],
           ['Add a whole bundle', 'Under <i>Job bundles</i> pick a bundle (like <i>Shower tile package</i>), change any quantity, and click <i>Add whole bundle</i>. Every work type in it goes onto the estimate at once.'],
           ['Frame with the calculator', 'For lumber, use the <i>Framing calculator</i>. Pick what you are framing, type the length, spacing, height and openings, check the pieces it lists, then click <i>Add framing to estimate</i>.'],
