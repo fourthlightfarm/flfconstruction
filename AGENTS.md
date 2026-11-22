@@ -50,22 +50,17 @@ All three pages share the same nav bar and footer. When adding a nav item, page,
   much text is in each one — don't remove that when editing card content.
 - `#impact` — "Building With a Purpose" box explaining the 10%-of-project-cost donation to Fourth Light Farm
 - `#contact` — contact info
-- `#game` — "Cow Catapult," a silly slingshot mini-game (drag the cow, launch it at the house) added 2026-08-30 at
-  the user's request. Self-contained Canvas 2D game, no library, logic lives in the same inline `<script>` block at
-  the bottom of `index.html` after the smooth-scroll code, styles under "Cow Catapult mini-game" in `theme.css`.
-  Colors are pulled from the `--flfc-*` CSS variables at runtime so it stays in sync with the site palette. A direct
-  hit spawns `debris`/`dustParticles` (small physics-driven rectangles + fading gray puffs) instead of just drawing
-  the house — `houseDestroyed` flips to `true` and `drawHouse()` stops being called, so the settled debris pile
-  doubles as the "wreckage." The hit message is a fixed string the user dictated verbatim — "UH OH TIME TO CALL FLFC!
-  GET MOOVING!" — don't rewrite its wording/casing/punctuation without being asked. `resetGame()` clears `debris`,
-  `dustParticles`, and `houseDestroyed` along with the cow. This is a fun easter egg, not a business-critical
-  feature — treat requests to tweak it (power, house size, cow look) as low-risk/quick iterations, not something
-  requiring the same caution as the quote form or contact info.
-  Testing note: `requestAnimationFrame` does not fire at all in this project's dev sandbox/browser-preview tool (confirmed
-  via a bare rAF counter test), so the animated flight/explosion can't be watched live there — verify game logic by
-  temporarily exposing `{ update, draw, resetGame, getState, getCow }` on `window` right after `loop()` is called,
-  driving frames by calling `update()` directly in a loop from the browser tool's JS-eval, then removing that debug
-  hook before committing. Real browsers run rAF normally; this is purely a tooling limitation.
+- `#game` — "Cow Catapult." Originally a tiny Canvas 2D slingshot game (2026-08-30); replaced 2026-11-21 at the
+  user's request with a Unity WebGL game built in `C:\Users\frank\Dev\CowCatapult` (three levels: Farmhouse Flop,
+  Fireworks Factory, Backhoe Rampage with a drivable Case 580K and a cow driver). The build lives in
+  `game/cow-catapult/` (static files, generated; don't hand-edit them, rebuild from the Unity project instead). The
+  section shows a poster (`images/cow-catapult.jpg`) with a Play button; clicking it loads the game in an `<iframe>`
+  so the large download only happens when a visitor asks for it. There is also an "Open full screen" link. Styles
+  are under "Cow Catapult mini-game" in `theme.css`; the small loader script is at the bottom of `index.html`.
+  The win message is a fixed string the user dictated verbatim — "UH OH TIME TO CALL FLFC! GET MOOVING!" — and
+  lives in the Unity project's `Game.cs`; don't rewrite its wording/casing/punctuation without being asked. This is
+  a fun easter egg, not a business-critical feature — treat requests to tweak it as low-risk, but a rebuild takes
+  20+ minutes in Unity.
 
 `portfolio.html` — page header, then a grid of project cards (see placeholders below), then a "Start Your Project"
 CTA linking to `pricing.html`.
