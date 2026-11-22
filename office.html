@@ -1944,7 +1944,7 @@
       var annual = s.rows.reduce(function (t, r) { return t + n(r.a) * (FREQ[r.f] ? FREQ[r.f][1] : 1); }, 0);
       var paid = n(s.people) * n(s.hpw) * n(s.wks);
       var hours = paid * n(s.util) / 100;
-      var o = { annual: annual, hours: hours, ok: hours > 0 };
+      var o = { annual: annual, hours: hours, ok: hours > 0, profitPct: n(s.profit) };
       o.perHr = hours > 0 ? annual / hours : 0;
       o.wageHr = hours > 0 ? n(s.wage) * paid / hours : 0;     // pay for non-billable hours is spread over the billable ones
       o.costHr = o.wageHr + o.perHr;
@@ -1973,6 +1973,8 @@
       return o;
     }
     window.__ohCalc = calc;
+    // Lets the Estimator read the live Overhead numbers (cost per billed hour, profit target).
+    window.__ohResult = function () { try { var s = S || load(), o = calc(s); o.starter = !!s.starter; return o; } catch (e) { return null; } };
 
     function build() {
       var root = document.getElementById('ohTab');
@@ -2246,33 +2248,60 @@
 
     // ----- data -----
     // STARTER numbers are placeholders, not FLFC's real costs. They show a warning until edited.
+    // A "part" is one thing you buy for a work type: { n: name, cover: work units one pack covers, pack: what you buy it in, price: per pack }.
+    var tp = function (n, cover, pack, price) { return { n: n, cover: cover, pack: pack, price: price }; };
     var STARTER = [
-      ['Tile - floor', 'SF', 0.20, 8.00, 'Tile, thinset, grout'],
-      ['Tile - shower / tub wall', 'SF', 0.30, 9.00, 'Tile, thinset, grout'],
-      ['Tile - shower pan / pebble floor', 'SF', 0.60, 14.00, 'Pebble tile, mortar bed, grout'],
-      ['Waterproofing membrane', 'SF', 0.05, 2.50, 'Membrane / board'],
-      ['Rot repair - trim, sill, siding', 'LF', 0.50, 6.00, 'Lumber, trim, fasteners, primer'],
-      ['Rot repair - sheathing / framing', 'SF', 0.40, 4.00, 'Lumber, sheathing, fasteners'],
-      ['Framing - wall', 'LF', 0.25, 9.00, 'Studs, plates, fasteners'],
-      ['Drywall - hang and finish', 'SF', 0.05, 0.90, 'Board, mud, tape, screws'],
-      ['Flooring - install', 'SF', 0.06, 4.00, 'Flooring, underlayment'],
-      ['Paint - walls', 'SF', 0.015, 0.20, 'Paint, primer, supplies'],
-      ['Door / window install', 'EA', 2.00, 250.00, 'Unit, trim, flashing, hardware'],
-      ['Architectural drafting', 'HR', 1.00, 0.00, '']
-    ].map(function (r) { return { id: uid(), name: r[0], unit: r[1], hrs: r[2], mat: r[3], matDesc: r[4], starter: true }; });
-    function defaultPrices() { return { labor: 150, markup: 0, cont: 0, dump: 150, travel: 150, cash: 10, card: 3, valid: 30, frame: defaultFrame(), asm: STARTER.map(function (a) { return Object.assign({}, a); }) }; }
-    function freshState() { return { estId: '', job: { customer: '', job: '', address: '', date: new Date().toISOString().slice(0, 10), notes: '' }, items: [], takeoff: { file: '', cal: {}, meas: [] }, posted: null }; }
+      ['Tile - floor', 'SF', 0.20, 1.00, 'Spacers, caulk, supplies', [tp('Floor tile', 10, 'box', 60), tp('Thinset', 60, '50 lb bag', 28), tp('Grout', 100, '25 lb bag', 30)]],
+      ['Tile - shower / tub wall', 'SF', 0.30, 1.50, 'Spacers, caulk, supplies', [tp('Wall tile', 10, 'box', 65), tp('Thinset', 60, '50 lb bag', 28), tp('Grout', 100, '25 lb bag', 30)]],
+      ['Tile - shower pan / pebble floor', 'SF', 0.60, 2.60, 'Sealer, caulk, supplies', [tp('Pebble tile sheet', 1, 'sheet', 9), tp('Mortar bed mix', 10, '60 lb bag', 18), tp('Grout', 50, '25 lb bag', 30)]],
+      ['Waterproofing membrane', 'SF', 0.05, 0.10, 'Seam tape, sealant', [tp('Waterproofing board 3x5', 15, 'sheet', 36)]],
+      ['Rot repair - trim, sill, siding', 'LF', 0.50, 6.00, 'Lumber, trim, fasteners, primer', []],
+      ['Rot repair - sheathing / framing', 'SF', 0.40, 4.00, 'Lumber, sheathing, fasteners', []],
+      ['Framing - wall', 'LF', 0.25, 9.00, 'Studs, plates, fasteners', []],
+      ['Drywall - hang and finish', 'SF', 0.05, 0.25, 'Corner bead, supplies', [tp('Drywall 4x8 sheet', 32, 'sheet', 15), tp('Joint compound', 300, '4.5 gal bucket', 18), tp('Paper tape', 500, 'roll', 6), tp('Drywall screws', 1000, '5 lb box', 28)]],
+      ['Flooring - install', 'SF', 0.06, 4.00, 'Flooring, underlayment', []],
+      ['Paint - walls', 'SF', 0.015, 0.01, 'Rollers, tape, supplies', [tp('Paint', 350, 'gallon', 40), tp('Primer', 350, 'gallon', 28)]],
+      ['Door / window install', 'EA', 2.00, 250.00, 'Unit, trim, flashing, hardware', []],
+      ['Architectural drafting', 'HR', 1.00, 0.00, '', []]
+    ].map(function (r) { return { id: uid(), name: r[0], unit: r[1], hrs: r[2], mat: r[3], matDesc: r[4], comps: r[5], starter: true }; });
+    // Bundles are ready-made sets of work types. Items point at a work type by id; starter ones are matched by name.
+    var BUNDLES0 = [
+      ['Shower tile package', [['Waterproofing membrane', 60], ['Tile - shower / tub wall', 60], ['Tile - shower pan / pebble floor', 12]]],
+      ['Bathroom floor retile', [['Waterproofing membrane', 45], ['Tile - floor', 45]]],
+      ['Room drywall and paint', [['Drywall - hang and finish', 400], ['Paint - walls', 400]]],
+      ['Rot repair package', [['Rot repair - trim, sill, siding', 20], ['Rot repair - sheathing / framing', 16]]]
+    ];
+    function defaultBundles(asm) {
+      return BUNDLES0.map(function (b) {
+        return { id: uid(), name: b[0], items: b[1].map(function (it) { var a = asm.filter(function (x) { return x.name === it[0]; })[0]; return a ? { asm: a.id, qty: it[1] } : null; }).filter(Boolean) };
+      });
+    }
+    function cloneJ(o) { return JSON.parse(JSON.stringify(o)); }
+    function defaultPrices() { var asm = STARTER.map(function (a) { return cloneJ(a); }); return { labor: 150, markup: 0, cont: 0, dump: 150, travel: 150, cash: 10, card: 3, valid: 30, frame: defaultFrame(), asm: asm, bundles: defaultBundles(asm), hist: [] }; }
+    function freshActual() { return { g: {}, extra: '', note: '', done: false }; }
+    function freshState() { return { estId: '', job: { customer: '', job: '', address: '', date: new Date().toISOString().slice(0, 10), notes: '' }, items: [], takeoff: { file: '', cal: {}, meas: [] }, posted: null, actual: freshActual() }; }
     function fixState(s) {
       if (!s || !Array.isArray(s.items)) return freshState();
       if (!s.job) s.job = freshState().job;
       if (!s.takeoff) s.takeoff = { file: '', cal: {}, meas: [] };
+      if (!s.actual || typeof s.actual !== 'object') s.actual = freshActual();
+      if (!s.actual.g) s.actual.g = {};
       return s;
     }
     function fixPrices(p) {
       var d = defaultPrices();
       if (!p || typeof p !== 'object' || !Array.isArray(p.asm)) return d;
-      Object.keys(d).forEach(function (k) { if (p[k] == null) p[k] = d[k]; });
+      Object.keys(d).forEach(function (k) { if (p[k] == null && k !== 'bundles') p[k] = d[k]; });
       p.frame = fixFrame(p.frame);
+      // Work types saved before parts existed: untouched starter rows get the new parts; edited rows keep their numbers.
+      p.asm.forEach(function (a) {
+        if (Array.isArray(a.comps)) return;
+        var m = d.asm.filter(function (x) { return x.name === a.name; })[0];
+        if (a.starter && m) { a.comps = m.comps; a.mat = m.mat; a.matDesc = m.matDesc; } else a.comps = [];
+      });
+      if (!Array.isArray(p.bundles)) p.bundles = defaultBundles(p.asm);
+      p.bundles.forEach(function (b) { if (!Array.isArray(b.items)) b.items = []; });
+      if (!Array.isArray(p.hist)) p.hist = [];
       return p;
     }
 
@@ -2329,7 +2358,7 @@
     function skeleton() {
       return '' +
       '<div class="bar sub" id="e-sub">' +
-        '<button data-sub="estimate">Estimate</button><button data-sub="takeoff">Plan takeoff</button><button data-sub="prices">Price list</button><button data-sub="quote">Quote &amp; portal</button>' +
+        '<button data-sub="estimate">Estimate</button><button data-sub="takeoff">Plan takeoff</button><button data-sub="prices">Price list</button><button data-sub="quote">Quote &amp; portal</button><button data-sub="results">Results</button>' +
         '<span class="muted" style="margin-left:auto">Total: <b id="e-hdr">$0.00</b></span>' +
       '</div>' +
       '<div class="muted" id="e-status" style="margin-top:6px"></div>' +
@@ -2347,7 +2376,13 @@
           '<div><label id="e-qa-lbl">Quantity</label><input id="e-qa-qty" type="number" min="0" step="any"></div>' +
           '<div><label>Waste %</label><input id="e-qa-waste" type="number" min="0" step="any" value="10"></div>' +
           '<div class="fix"><button class="go" id="e-qa-add">Add to estimate</button></div></div>' +
-          '<p class="muted">Adds one labor line and one material line from the Price list. Measure quantities off a plan in Plan takeoff.</p></section>' +
+          '<p class="muted">Adds a labor line and the material lines from the Price list. Parts are rounded up to whole boxes, bags and sheets. Measure quantities off a plan in Plan takeoff.</p></section>' +
+        '<section class="card" id="e-bu-card"><h2>Job bundles</h2><div class="rowf">' +
+          '<div style="flex:2 1 220px"><label>Bundle</label><select id="e-bu-sel"></select></div>' +
+          '<div><label>Waste %</label><input id="e-bu-waste" type="number" min="0" step="any" value="10"></div>' +
+          '<div class="fix"><button class="go" id="e-bu-add">Add whole bundle</button></div></div>' +
+          '<div id="e-bu-body" style="margin-top:8px"></div>' +
+          '<p class="muted">One click adds every work type in the bundle. Change the quantities here before you add. Build your own bundles in the Price list.</p></section>' +
         '<section class="card" id="e-fr-card"><h2>Framing calculator</h2>' +
           '<div class="rowf"><div style="flex:1.4 1 170px"><label>What are you framing</label><select id="e-fr-kind"></select></div>' +
           '<div style="flex:1.4 1 150px"><label>Label (optional)</label><input id="e-fr-label" placeholder="e.g. North wall"></div>' +
@@ -2382,6 +2417,7 @@
           '<div class="bar" style="margin-top:10px"><button class="alt small" data-add="Labor">+ Labor</button><button class="alt small" data-add="Material">+ Material</button><button class="alt small" data-add="Dump">+ Dump</button><button class="alt small" data-add="Travel">+ Travel</button><button class="alt small" data-add="Other">+ Other</button></div>' +
           '<p class="muted">A labor line with a blank unit price uses the labor rate from the Price list.</p></section>' +
         '<section class="card"><h2>Totals</h2><div class="totals" id="e-totals"></div></section>' +
+        '<section class="card" id="e-pm-card"><h2>Profit meter</h2><div id="e-pm"></div></section>' +
         '<section class="card" id="e-mat-card"><h2>Material list</h2><div id="e-mat"></div>' +
           '<div class="bar" style="margin-top:10px"><button class="alt small" id="e-mat-copy">Copy list</button><button class="alt small" id="e-mat-print">Print list</button></div>' +
           '<p class="muted">Every Material line in this estimate with waste already included, ready to take to the supplier. Costs are the Price list costs, before any markup. Internal use, not shown to the customer.</p></section>' +
@@ -2430,8 +2466,16 @@
             '<div><label>Hardware % of lumber</label><input id="e-fp-fasten" type="number" min="0" step="any"></div></div>' +
           '<p class="muted">Used by the Framing calculator. A board costs its price per LF times its length (a 2x4 x 8 ft at $0.90 per LF is $7.20). Labor is hours per piece cut and set.</p></section>' +
         '<section class="card"><h2>Work types</h2><div class="banner" style="background:#fbf1e3;color:#7a4a10">Rows marked <b>starter</b> are placeholder numbers, not FLFC\'s real costs. Edit a row and the mark goes away. Check them before sending any quote.</div>' +
-          '<div class="tblwrap"><table id="e-asm"><thead><tr><th>Work type</th><th style="width:70px">Unit</th><th style="width:100px" class="num">Labor hrs / unit</th><th style="width:110px" class="num">Material $ / unit</th><th>Material description</th><th style="width:60px"></th><th style="width:36px"></th></tr></thead><tbody></tbody></table></div>' +
+          '<div class="tblwrap"><table id="e-asm"><thead><tr><th>Work type</th><th style="width:70px">Unit</th><th style="width:100px" class="num">Labor hrs / unit</th><th style="width:110px" class="num">Material $ / unit</th><th>Other material</th><th style="width:130px"></th><th style="width:36px"></th></tr></thead><tbody></tbody></table></div>' +
+          '<p class="muted"><b>Parts</b> are what you buy for the work type, with how many units one pack covers (a box of tile covers 10 SF, a bag of thinset 60 SF). The estimate rounds each part up to whole packs. <b>Material $ / unit</b> is for loose items that are not parts. Click Parts on a row to edit them.</p>' +
           '<div class="bar" style="margin-top:10px"><button class="alt" id="e-asm-add">+ Add work type</button><button class="alt" id="e-asm-reset" style="color:var(--red);border-color:var(--red)">Reset to starter list</button></div></section>' +
+        '<section class="card"><h2>Job bundles</h2><div id="e-bundles"></div>' +
+          '<div class="bar" style="margin-top:10px"><button class="alt" id="e-bu-new">+ New bundle</button></div>' +
+          '<p class="muted">A bundle is a set of work types you often sell together, with starting quantities. On the Estimate tab you pick it, adjust the quantities and add it all at once.</p></section>' +
+      '</div>' +
+      '<div id="e-sec-results" hidden>' +
+        '<section class="card"><h2>Estimate vs actual</h2><div id="e-rs"></div></section>' +
+        '<section class="card"><h2>What finished jobs say</h2><div id="e-learn"></div></section>' +
       '</div>' +
 
       '<div id="e-sec-quote" hidden>' +
@@ -2451,7 +2495,8 @@
     function showSub(name) {
       sub = name;
       $$('#e-sub [data-sub]').forEach(function (b) { b.className = b.dataset.sub === name ? 'go small' : 'alt small'; });
-      ['estimate', 'takeoff', 'prices', 'quote'].forEach(function (n) { $e('sec-' + n).hidden = n !== name; });
+      ['estimate', 'takeoff', 'prices', 'quote', 'results'].forEach(function (n) { $e('sec-' + n).hidden = n !== name; });
+      if (name === 'results') renderResults();
       if (name === 'estimate') renderEstimate();
       if (name === 'takeoff') { ensurePdfJs(); renderMeas(); drawOverlay(); updateScaleStatus(); }
       if (name === 'prices') fillPrices();
@@ -2469,15 +2514,140 @@
       if (cur0) sel.value = cur0;
       var a = asmById(sel.value); $e('qa-lbl').textContent = 'Quantity' + (a ? ' (' + a.unit + ')' : '');
     }
+    // ----- results: estimate vs actual, and learning from finished jobs -----
+    var doSave = function () {};
+    function groupsOf() {
+      var m = {}, order = [];
+      S.items.forEach(function (it) {
+        if (it.cat !== 'Labor' && it.cat !== 'Material') return;
+        var k = it.an || '';
+        if (!m[k]) { m[k] = { k: k, units: 0, eh: 0, em: 0 }; order.push(k); }
+        if (num(it.aq) > 0) m[k].units += num(it.aq);
+        if (it.cat === 'Labor') m[k].eh += num(it.qty); else m[k].em += matCost(it);
+      });
+      return order.map(function (k) { return m[k]; });
+    }
+    function extraEst() { var t = 0; S.items.forEach(function (it) { if (it.cat !== 'Labor' && it.cat !== 'Material') t += lineTotal(it); }); return t; }
+    function got(v) { return v !== '' && v != null && isFinite(parseFloat(v)); }
+    function varTxt(est, act, unit) {
+      if (!got(act)) return '<span class="muted">-</span>';
+      var d = num(act) - est, p = est > 0 ? d / est * 100 : 0;
+      return '<b style="color:' + (d > 0 ? 'var(--red)' : 'var(--ok)') + '">' + (d > 0 ? '+' : d < 0 ? '-' : '') + (unit === '$' ? fm(Math.abs(d)) : round2(Math.abs(d)) + ' ' + unit) + (est > 0 ? ' (' + (p > 0 ? '+' : '') + Math.round(p) + '%)' : '') + '</b>';
+    }
+    function renderResults() {
+      var box = $e('rs'); if (!box) return;
+      var G = groupsOf(), A = S.actual;
+      if (!G.length) { box.innerHTML = '<div class="muted">Build or open an estimate first. After the job, come back here and type what it really took.</div>'; renderLearn(); return; }
+      box.innerHTML = '<p class="muted">Job: <b>' + esc([S.job.customer, S.job.job].filter(Boolean).join(' - ') || 'Untitled estimate') + '</b>. Type what the job really took. Leave a box blank if you did not track it.</p>' +
+        '<div class="tblwrap"><table id="e-rs-tbl"><thead><tr><th>Work type</th><th class="num">Units</th><th class="num">Est hrs</th><th style="width:100px" class="num">Actual hrs</th><th>Hrs off by</th><th class="num">Est material</th><th style="width:110px" class="num">Actual material $</th><th>Material off by</th></tr></thead><tbody>' +
+        G.map(function (g) {
+          var a = A.g[g.k] || {};
+          return '<tr data-gk="' + esc(g.k) + '"><td>' + esc(g.k || 'Other lines (not from a work type)') + '</td><td class="num">' + (g.units ? round2(g.units) : '') + '</td><td class="num">' + round2(g.eh) + '</td>' +
+            '<td><input data-ra="h" type="number" min="0" step="any" class="num" value="' + esc(a.h == null ? '' : a.h) + '"></td><td data-vh></td>' +
+            '<td class="num">' + fm(g.em) + '</td><td><input data-ra="m" type="number" min="0" step="any" class="num" value="' + esc(a.m == null ? '' : a.m) + '"></td><td data-vm></td></tr>';
+        }).join('') +
+        '<tr><td>Dump, travel, other</td><td></td><td></td><td></td><td></td><td class="num">' + fm(extraEst()) + '</td><td><input data-ra="x" type="number" min="0" step="any" class="num" value="' + esc(A.extra == null ? '' : A.extra) + '"></td><td data-vx></td></tr>' +
+        '</tbody></table></div><div id="e-rs-sum" style="margin-top:10px"></div>' +
+        '<label>Notes (what went wrong or right)</label><textarea id="e-rs-note" style="min-height:50px" placeholder="e.g. Subfloor was rotten, added a day">' + esc(A.note || '') + '</textarea>' +
+        '<div class="bar" style="margin-top:10px"><button class="alt" id="e-rs-save">Save actuals with this estimate</button><button class="go" id="e-rs-rec">Record as a finished job (learn from it)</button></div>' +
+        '<p class="muted">Recording adds this job to the history below. Re-recording the same job replaces its entry instead of counting it twice. Units come from the Quick add or bundle that made the line, so a line you added by hand is not learned from.</p>' +
+        (A.done ? '<div class="banner" style="background:#e3f0e1;color:var(--ok)">This job is recorded as finished.</div>' : '');
+      rsFill(); renderLearn();
+    }
+    function rsFill() {
+      var G = groupsOf(), A = S.actual, o = costBasis(), estH = 0, actH = 0, estM = 0, actM = 0;
+      G.forEach(function (g) {
+        var a = A.g[g.k] || {}, tr = document.querySelector('#e-rs-tbl tr[data-gk="' + (window.CSS && CSS.escape ? CSS.escape(g.k) : g.k.replace(/"/g, '\\"')) + '"]');
+        estH += g.eh; estM += g.em;
+        actH += got(a.h) ? num(a.h) : g.eh; actM += got(a.m) ? num(a.m) : g.em;
+        if (tr) { tr.querySelector('[data-vh]').innerHTML = varTxt(g.eh, a.h, 'hrs'); tr.querySelector('[data-vm]').innerHTML = varTxt(g.em, a.m, '$'); }
+      });
+      var ex = extraEst(), actX = got(A.extra) ? num(A.extra) : ex, vx = document.querySelector('#e-rs-tbl [data-vx]');
+      if (vx) vx.innerHTML = varTxt(ex, A.extra, '$');
+      var sum = $e('rs-sum'); if (!sum) return;
+      var price = calc().total, h = '<div class="totals"><div>Price</div><div>' + fm(price) + '</div>';
+      if (o) {
+        var estC = estH * o.costHr + estM + ex, actC = actH * o.costHr + actM + actX;
+        h += '<div>Estimated cost (hours at ' + fm(o.costHr) + '/hr)</div><div>' + fm(estC) + '</div><div>Estimated profit</div><div>' + fm(price - estC) + ' (' + round2(price > 0 ? (price - estC) / price * 100 : 0) + '%)</div>' +
+          '<div class="big">Actual profit</div><div class="big" style="color:' + (price - actC >= 0 ? 'var(--ok)' : 'var(--red)') + '">' + fm(price - actC) + ' (' + round2(price > 0 ? (price - actC) / price * 100 : 0) + '%)</div></div>' +
+          '<div class="muted">Actual profit uses the real numbers you typed and the estimate for any box left blank.</div>';
+      } else h += '<div>Hours</div><div>' + round2(estH) + ' est, ' + round2(actH) + ' actual</div></div><div class="muted">Fill in the Overhead tab to see profit.</div>';
+      sum.innerHTML = h;
+    }
+    function histGroups() {
+      var by = {};
+      P.hist.forEach(function (j) { (j.groups || []).forEach(function (g) {
+        var r = by[g.n] || (by[g.n] = { n: g.n, jobs: 0, hu: 0, hh: 0, mu: 0, mm: 0 });
+        r.jobs++;
+        if (g.ah != null && g.u > 0) { r.hu += g.u; r.hh += g.ah; }
+        if (g.am != null && g.u > 0) { r.mu += g.u; r.mm += g.am; }
+      }); });
+      return Object.keys(by).map(function (k) { return by[k]; });
+    }
+    function offTxt(cur, act) { if (!(cur > 0)) return ''; var p = (act - cur) / cur * 100; return '<b style="color:' + (Math.abs(p) < 5 ? 'var(--muted)' : p > 0 ? 'var(--red)' : 'var(--ok)') + '">' + (p > 0 ? '+' : '') + Math.round(p) + '%</b>'; }
+    function renderLearn() {
+      var box = $e('learn'); if (!box) return;
+      var H = histGroups();
+      if (!P.hist.length) { box.innerHTML = '<div class="muted">No finished jobs recorded yet. When a job is done, type the real hours and material cost above and click <i>Record as a finished job</i>. After a few jobs this shows where your Price list is off and fixes it with one click.</div>'; return; }
+      box.innerHTML = '<div class="tblwrap"><table><thead><tr><th>Work type</th><th class="num">Jobs</th><th class="num">Price list hrs/unit</th><th class="num">Actual hrs/unit</th><th>Off</th><th></th><th class="num">Price list $/unit</th><th class="num">Actual $/unit</th><th>Off</th><th></th></tr></thead><tbody>' +
+        H.map(function (r) {
+          var a = P.asm.filter(function (x) { return x.name === r.n; })[0];
+          var ah = r.hu > 0 ? r.hh / r.hu : null, am = r.mu > 0 ? r.mm / r.mu : null;
+          return '<tr data-ln="' + esc(r.n) + '"><td>' + esc(r.n) + (a ? '' : ' <span class="muted">(not in Price list)</span>') + '</td><td class="num">' + r.jobs + '</td>' +
+            '<td class="num">' + (a ? Math.round(num(a.hrs) * 1000) / 1000 : '') + '</td><td class="num">' + (ah == null ? '' : Math.round(ah * 1000) / 1000) + '</td><td>' + (a && ah != null ? offTxt(num(a.hrs), ah) : '') + '</td><td>' + (a && ah != null ? '<button class="alt small" data-use="h">Use</button>' : '') + '</td>' +
+            '<td class="num">' + (a ? fm(effMat(a)) : '') + '</td><td class="num">' + (am == null ? '' : fm(am)) + '</td><td>' + (a && am != null ? offTxt(effMat(a), am) : '') + '</td><td>' + (a && am != null ? '<button class="alt small" data-use="m">Use</button>' : '') + '</td></tr>';
+        }).join('') + '</tbody></table></div>' +
+        '<p class="muted">Averaged over every recorded job, weighted by how many units each one had. <i>Use</i> puts the real number into the Price list (for material it sets the Other material $ so parts plus other equal the real cost).</p>' +
+        '<h3>Recorded jobs</h3>' + P.hist.map(function (j, i) { return '<div style="display:flex;gap:8px;align-items:center;padding:3px 0"><span style="flex:1">' + esc(j.name || 'Job') + ' <span class="muted">' + esc(j.date || '') + ' - ' + (j.groups || []).length + ' work type' + ((j.groups || []).length === 1 ? '' : 's') + '</span></span><button class="small danger" data-hrm="' + i + '" title="Remove from history">&times;</button></div>'; }).join('');
+    }
+    function recordJob() {
+      var A = S.actual, gs = groupsOf().filter(function (g) { return g.k && g.units > 0; }).map(function (g) {
+        var a = A.g[g.k] || {};
+        return { n: g.k, u: round2(g.units), eh: round2(g.eh), em: round2(g.em), ah: got(a.h) ? num(a.h) : null, am: got(a.m) ? num(a.m) : null };
+      }).filter(function (g) { return g.ah != null || g.am != null; });
+      if (!gs.length) { banner('Type the actual hours or material cost for at least one work type first. Only lines made by Quick add or a bundle can be learned from.', 'err'); return; }
+      if (!A.hid) A.hid = uid();
+      var entry = { id: A.hid, name: [S.job.customer, S.job.job].filter(Boolean).join(' - ') || 'Untitled', date: S.job.date || '', groups: gs };
+      P.hist = P.hist.filter(function (h) { return h.id !== entry.id; }); P.hist.unshift(entry); P.hist = P.hist.slice(0, 60);
+      A.done = true; savePrices(); saveDraft(); doSave(); renderResults(); toast('Recorded. The Price list can now learn from this job.');
+    }
+    // ----- bundles (Estimate tab) -----
+    function bundleById(id) { return P.bundles.filter(function (b) { return b.id === id; })[0]; }
+    function renderBundleSelect() {
+      var sel = $e('bu-sel'), cur0 = sel.value;
+      sel.innerHTML = P.bundles.length ? P.bundles.map(function (b) { return '<option value="' + b.id + '">' + esc(b.name) + ' (' + b.items.length + ' items)</option>'; }).join('') : '<option value="">No bundles yet (make one in the Price list)</option>';
+      if (cur0 && bundleById(cur0)) sel.value = cur0;
+      renderBundlePick();
+    }
+    function renderBundlePick() {
+      var b = bundleById($e('bu-sel').value), box = $e('bu-body');
+      if (!b || !b.items.length) { box.innerHTML = '<div class="muted">' + (b ? 'This bundle is empty. Add work types to it in the Price list.' : '') + '</div>'; return; }
+      box.innerHTML = '<table><thead><tr><th>Work type</th><th style="width:120px" class="num">Quantity</th><th style="width:60px">Unit</th></tr></thead><tbody>' +
+        b.items.filter(function (it) { return asmById(it.asm); }).map(function (it) {
+          var a = asmById(it.asm);
+          return '<tr><td>' + esc(a.name) + '</td><td><input class="num" type="number" min="0" step="any" data-bq="' + a.id + '" value="' + esc(it.qty) + '"></td><td>' + esc(a.unit) + '</td></tr>';
+        }).join('') + '</tbody></table>';
+    }
     function addAssembly(asmId, qty, waste, srcLabel) {
       var a = asmById(asmId);
       if (!a || !(qty > 0)) { banner('Enter a quantity first.', 'err'); return false; }
       var matQty = round2(qty * (1 + waste / 100));
       var lbl = srcLabel ? ' - ' + srcLabel : '';
-      if (num(a.hrs) > 0) S.items.push({ id: uid(), cat: 'Labor', desc: a.name + lbl + ' (' + qty + ' ' + a.unit + ')', qty: round2(qty * a.hrs), unit: 'hr', price: '', starter: !!a.starter });
-      if (num(a.mat) > 0) S.items.push({ id: uid(), cat: 'Material', desc: (a.matDesc || a.name) + lbl + (waste ? ' (+' + waste + '% waste)' : ''), qty: matQty, unit: a.unit, price: a.mat, starter: !!a.starter });
+      var parts = (a.comps || []).filter(function (c) { return num(c.cover) > 0; });
+      var tag = { an: a.name }, lead = true, st = !!a.starter;
+      function tagged() { var t = { an: tag.an }; if (lead) { t.aq = qty; lead = false; } return t; }
+      function push(it) { var t = tagged(); it.an = t.an; if (t.aq != null) it.aq = t.aq; S.items.push(it); }
+      if (num(a.hrs) > 0) push({ id: uid(), cat: 'Labor', desc: a.name + lbl + ' (' + qty + ' ' + a.unit + ')', qty: round2(qty * a.hrs), unit: 'hr', price: '', starter: st });
+      // Parts are bought whole: tile by the box, thinset by the bag, drywall by the sheet.
+      parts.forEach(function (c) {
+        var packs = Math.max(1, Math.ceil(matQty / num(c.cover) - 1e-9));
+        push({ id: uid(), cat: 'Material', desc: (c.n || 'Part') + ' (' + (c.pack || 'pack') + ', covers ' + round2(num(c.cover)) + ' ' + a.unit + ')' + lbl + ' - ' + round2(matQty) + ' ' + a.unit + ' needed', qty: packs, unit: c.pack || 'pack', price: num(c.price), starter: st });
+      });
+      if (num(a.mat) > 0) push({ id: uid(), cat: 'Material', desc: (parts.length ? 'Other materials' + (a.matDesc ? ' (' + a.matDesc + ')' : '') + ' - ' + a.name : (a.matDesc || a.name)) + lbl + (waste ? ' (+' + waste + '% waste)' : ''), qty: matQty, unit: a.unit, price: a.mat, starter: st });
       saveDraft(); return true;
     }
+    // Material cost of one work unit: the "other" $ plus each part's price spread over what a pack covers.
+    function effMat(a) { return num(a.mat) + (a.comps || []).reduce(function (t, c) { return t + (num(c.cover) > 0 ? num(c.price) / num(c.cover) : 0); }, 0); }
     function addBlank(cat) {
       var it = { id: uid(), cat: cat, desc: '', qty: 1, unit: cat === 'Labor' ? 'hr' : 'ea', price: '' };
       if (cat === 'Dump') { it.desc = 'Dump fee'; it.price = P.dump; }
@@ -2512,7 +2682,38 @@
       h += '<div>Card (+' + P.card + '%)</div><div>' + fm(c.card) + '</div>';
       h += '<div class="muted">Donation to FLF, 10% of project cost (internal)</div><div class="muted">' + fm(c.donation) + '</div>';
       $e('totals').innerHTML = h; $e('hdr').textContent = fm(c.total);
-      renderMatList();
+      renderMatList(); renderProfit();
+    }
+    // ----- profit meter: the price against what the job really costs you (Overhead tab numbers) -----
+    function costBasis() { var o = window.__ohResult ? window.__ohResult() : null; return o && o.ok ? o : null; }
+    function costSplit() {
+      var s = { hrs: 0, mat: 0, other: 0 };
+      S.items.forEach(function (it) { if (it.cat === 'Labor') s.hrs += num(it.qty); else if (it.cat === 'Material') s.mat += matCost(it); else s.other += lineTotal(it); });
+      return s;
+    }
+    function renderProfit() {
+      var box = $e('pm'); if (!box) return;
+      var o = costBasis();
+      if (!S.items.length) { box.innerHTML = '<div class="muted">Add line items and your profit shows here.</div>'; return; }
+      if (!o) { box.innerHTML = '<div class="muted">Fill in the <b>Overhead</b> tab (crew, hours and yearly costs) so the meter knows what an hour of work really costs you.</div>'; return; }
+      var c = calc(), s = costSplit(), labor = s.hrs * o.costHr, cost = labor + s.mat + s.other;
+      var profit = c.total - cost, margin = c.total > 0 ? profit / c.total * 100 : 0, target = o.profitPct;
+      var need = target < 100 ? cost / (1 - target / 100) : 0;
+      var cashProfit = c.cash - cost, cashMargin = c.cash > 0 ? cashProfit / c.cash * 100 : 0;
+      var scale = Math.max(30, target * 2, margin), fill = Math.max(0, Math.min(100, margin / scale * 100)), tick = Math.min(100, target / scale * 100);
+      var color = margin >= target ? 'var(--ok)' : margin >= target / 2 && margin > 0 ? '#b4691f' : 'var(--red)';
+      var verdict = margin >= target ? 'On target.' : profit <= 0 ? 'This price loses money.' : 'Below your ' + round2(target) + '% target. Price at least ' + fm(need) + ' to hit it.';
+      box.innerHTML =
+        '<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><b style="font-size:26px;color:' + color + '">' + round2(margin) + '%</b><span><b style="color:' + color + '">' + fm(profit) + '</b> profit on a ' + fm(c.total) + ' price. ' + verdict + '</span></div>' +
+        '<div style="position:relative;height:14px;background:var(--tan);border-radius:7px;margin:8px 0 4px;overflow:hidden"><div style="height:100%;width:' + fill + '%;background:' + color + '"></div><div style="position:absolute;top:0;bottom:0;left:' + tick + '%;width:2px;background:var(--brown)"></div></div>' +
+        '<div class="muted" style="font-size:12px">The dark mark is your ' + round2(target) + '% profit target from the Overhead tab.</div>' +
+        '<div class="totals" style="margin-top:8px"><div>Labor: ' + round2(s.hrs) + ' hrs x ' + fm(o.costHr) + ' (wage + overhead)</div><div>' + fm(labor) + '</div>' +
+          '<div>Materials at cost (no markup)</div><div>' + fm(s.mat) + '</div>' +
+          '<div>Dump, travel, other</div><div>' + fm(s.other) + '</div>' +
+          '<div class="big">Your cost</div><div class="big">' + fm(cost) + '</div>' +
+          '<div>If paid cash (' + fm(c.cash) + ')</div><div>' + fm(cashProfit) + ' (' + round2(cashMargin) + '%)</div></div>' +
+        (o.starter ? '<div style="margin-top:6px"><span class="pill warn">starter overhead</span> <span class="muted">The Overhead numbers are still placeholders, so this is a rough read.</span></div>' : '') +
+        '<div class="muted" style="margin-top:6px">Internal only. Not shown on the quote.</div>';
     }
     // ----- material list (Material lines only, for buying) -----
     function matRows() { return S.items.filter(function (i) { return i.cat === 'Material'; }); }
@@ -2539,7 +2740,7 @@
     }
     function renderEstimate() {
       Object.keys(JOBF).forEach(function (id) { $e(id).value = S.job[JOBF[id]] || ''; });
-      renderAsmSelect(); renderItems(); renderTotals(); renderSaved(); frInit(); frRender();
+      renderAsmSelect(); renderBundleSelect(); renderItems(); renderTotals(); renderSaved(); frInit(); frRender();
       var n = S.items.filter(function (i) { return i.starter; }).length, b = $e('starter');
       b.hidden = !n;
       b.textContent = n ? n + ' line' + (n === 1 ? ' uses' : 's use') + ' starter placeholder prices. Check them in the Price list, then edit the line (or delete and re-add it) before sending a quote.' : '';
@@ -2590,7 +2791,7 @@
     function frAdd() {
       var res = framingCalc(frRead(), P.frame);
       if (!res.ok) { banner(res.notes[0], 'err'); return; }
-      frameItems(res, fe('label').value.trim(), P.frame, uid).forEach(function (it) { S.items.push(it); });
+      frameItems(res, fe('label').value.trim(), P.frame, uid).forEach(function (it) { it.an = 'Framing calculator'; S.items.push(it); });
       saveDraft(); renderEstimate(); toast('Framing added to the estimate.');
     }
     function fillFrame() {
@@ -2613,13 +2814,35 @@
       Object.keys(RATES).forEach(function (id) { $e(id).value = P[RATES[id]]; });
       fillFrame();
       $e('asm').querySelector('tbody').innerHTML = P.asm.map(function (a) {
-        return '<tr data-id="' + a.id + '"><td><input data-f="name" value="' + esc(a.name) + '"></td>' +
+        var open = !!openParts[a.id], nc = (a.comps || []).length;
+        var row = '<tr data-id="' + a.id + '"><td><input data-f="name" value="' + esc(a.name) + '"></td>' +
           '<td><select data-f="unit">' + ['SF', 'LF', 'EA', 'HR'].map(function (u) { return '<option' + (u === a.unit ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select></td>' +
           '<td><input data-f="hrs" type="number" step="any" class="num" value="' + a.hrs + '"></td>' +
           '<td><input data-f="mat" type="number" step="any" class="num" value="' + a.mat + '"></td>' +
           '<td><input data-f="matDesc" value="' + esc(a.matDesc) + '"></td>' +
-          '<td>' + (a.starter ? '<span class="pill warn" data-sp>starter</span>' : '') + '</td>' +
+          '<td>' + (a.starter ? '<span class="pill warn" data-sp>starter</span> ' : '') + '<button class="alt small" data-parts>' + (open ? 'Hide parts' : 'Parts (' + nc + ')') + '</button></td>' +
           '<td><button class="small danger" data-del title="Remove">&times;</button></td></tr>';
+        if (!open) return row;
+        row += '<tr class="partsRow" data-pid="' + a.id + '"><td colspan="7" style="background:var(--cream)"><div class="muted" style="margin-bottom:4px">Parts for <b>' + esc(a.name) + '</b>. One pack covers this many ' + esc(a.unit) + '. Material per ' + esc(a.unit) + ' with parts: <b data-eff>' + fm(effMat(a)) + '</b>.</div>' +
+          '<table><thead><tr><th>Part</th><th style="width:90px" class="num">Covers (' + esc(a.unit) + ')</th><th style="width:130px">Bought as</th><th style="width:100px" class="num">$ per pack</th><th style="width:36px"></th></tr></thead><tbody>' +
+          (a.comps || []).map(function (c, i) {
+            return '<tr data-ci="' + i + '"><td><input data-c="n" value="' + esc(c.n) + '"></td><td><input data-c="cover" type="number" min="0" step="any" class="num" value="' + c.cover + '"></td><td><input data-c="pack" value="' + esc(c.pack) + '"></td><td><input data-c="price" type="number" min="0" step="any" class="num" value="' + c.price + '"></td><td><button class="small danger" data-cdel title="Remove part">&times;</button></td></tr>';
+          }).join('') + '</tbody></table><button class="alt small" data-cadd style="margin-top:6px">+ Add part</button></td></tr>';
+        return row;
+      }).join('');
+      fillBundles();
+    }
+    var openParts = {};
+    function fillBundles() {
+      var box = $e('bundles'); if (!box) return;
+      if (!P.bundles.length) { box.innerHTML = '<div class="muted">No bundles yet.</div>'; return; }
+      box.innerHTML = P.bundles.map(function (b) {
+        return '<div class="card" style="margin:0 0 10px;padding:10px 12px" data-bid="' + b.id + '"><div class="rowf"><div style="flex:2 1 200px"><label>Bundle name</label><input data-bf="name" value="' + esc(b.name) + '"></div><div class="fix"><button class="small danger" data-bdel>Delete bundle</button></div></div>' +
+          '<table style="margin-top:6px"><thead><tr><th>Work type</th><th style="width:110px" class="num">Quantity</th><th style="width:36px"></th></tr></thead><tbody>' +
+          b.items.map(function (it, i) {
+            return '<tr data-bi="' + i + '"><td><select data-bf="asm">' + P.asm.map(function (a) { return '<option value="' + a.id + '"' + (a.id === it.asm ? ' selected' : '') + '>' + esc(a.name) + ' (' + esc(a.unit) + ')</option>'; }).join('') + '</select></td>' +
+              '<td><input data-bf="qty" type="number" min="0" step="any" class="num" value="' + esc(it.qty) + '"></td><td><button class="small danger" data-bidel title="Remove">&times;</button></td></tr>';
+          }).join('') + '</tbody></table><button class="alt small" data-biadd style="margin-top:6px">+ Add work type</button></div>';
       }).join('');
     }
 
@@ -2929,7 +3152,9 @@
           else { saved.splice(i, 1); lsSet(K_SAVED, saved); renderSaved(); }
         }
       });
-      $e('save').addEventListener('click', function () {
+      $e('save').addEventListener('click', saveEstimate);
+      doSave = saveEstimate;
+      function saveEstimate() {
         var name = $e('save-name').value.trim() || [S.job.customer, S.job.job].filter(Boolean).join(' - ') || 'Untitled';
         if (srv) {
           call('estimatorSave', { estimateId: S.estId || '', name: name, data: JSON.stringify(S) }).then(function (d) {
@@ -2943,7 +3168,7 @@
           saved.unshift({ id: S.estId, name: name, updated: new Date().toLocaleString(), state: JSON.parse(JSON.stringify(S)) });
           lsSet(K_SAVED, saved); saveDraft(); renderSaved(); toast('Saved "' + name + '" on this device.');
         }
-      });
+      }
       $e('new').addEventListener('click', function () {
         if (S.items.length && !confirm('Start a new estimate? Unsaved changes will be lost.')) return;
         S = freshState(); saveDraft(); clearPlan(); $e('save-name').value = ''; renderEstimate(); renderMeas(); toast('New estimate.');
@@ -2951,21 +3176,101 @@
       // prices
       $e('fp-card').addEventListener('input', frPriceEdit);
       Object.keys(RATES).forEach(function (id) { $e(id).addEventListener('input', function (e) { P[RATES[id]] = num(e.target.value); savePrices(); }); });
+      function unStarter(a) { if (!a.starter) return; a.starter = false; $$('#e-asm [data-sp]').forEach(function (sp) { var tr = sp.closest('tr'); if (tr && tr.dataset.id === a.id) sp.remove(); }); }
       $e('asm').addEventListener('input', function (e) {
+        var pr = e.target.closest('tr[data-pid]');
+        if (pr && e.target.dataset.c) {                       // editing a part
+          var pa = asmById(pr.dataset.pid), ci = e.target.closest('tr[data-ci]'); if (!pa || !ci) return;
+          var c = pa.comps[+ci.dataset.ci]; if (!c) return;
+          var k = e.target.dataset.c; c[k] = (k === 'cover' || k === 'price') ? num(e.target.value) : e.target.value;
+          unStarter(pa); savePrices();
+          var note = pr.querySelector('[data-eff]'); if (note) note.textContent = fm(effMat(pa));
+          return;
+        }
         var tr = e.target.closest('tr[data-id]'); if (!tr || !e.target.dataset.f) return;
         var a = asmById(tr.dataset.id); if (!a) return;
         var f = e.target.dataset.f; a[f] = (f === 'hrs' || f === 'mat') ? num(e.target.value) : e.target.value;
-        if (a.starter) { a.starter = false; var sp = tr.querySelector('[data-sp]'); if (sp) sp.remove(); }
+        unStarter(a);
         savePrices();
       });
       $e('asm').addEventListener('click', function (e) {
+        var pb = e.target.closest('[data-parts]');
+        if (pb) { var pid = pb.closest('tr').dataset.id; openParts[pid] = !openParts[pid]; fillPrices(); return; }
+        var pr = e.target.closest('tr[data-pid]');
+        if (pr) {
+          var pa = asmById(pr.dataset.pid); if (!pa) return;
+          if (e.target.closest('[data-cadd]')) { pa.comps.push({ n: 'New part', cover: 1, pack: 'each', price: 0 }); unStarter(pa); savePrices(); fillPrices(); }
+          else if (e.target.closest('[data-cdel]')) { pa.comps.splice(+e.target.closest('tr[data-ci]').dataset.ci, 1); unStarter(pa); savePrices(); fillPrices(); }
+          return;
+        }
         if (!e.target.closest('[data-del]')) return;
-        var id = e.target.closest('tr').dataset.id; P.asm = P.asm.filter(function (a) { return a.id !== id; }); savePrices(); fillPrices();
+        var id = e.target.closest('tr').dataset.id; P.asm = P.asm.filter(function (a) { return a.id !== id; });
+        P.bundles.forEach(function (b) { b.items = b.items.filter(function (it) { return it.asm !== id; }); });
+        savePrices(); fillPrices();
       });
-      $e('asm-add').addEventListener('click', function () { P.asm.push({ id: uid(), name: 'New work type', unit: 'SF', hrs: 0, mat: 0, matDesc: '', starter: false }); savePrices(); fillPrices(); });
+      $e('asm-add').addEventListener('click', function () { P.asm.push({ id: uid(), name: 'New work type', unit: 'SF', hrs: 0, mat: 0, matDesc: '', comps: [], starter: false }); savePrices(); fillPrices(); });
       $e('asm-reset').addEventListener('click', function () {
-        if (!confirm('Replace the work type list with the starter list? Your edits to work types will be lost.')) return;
-        P.asm = defaultPrices().asm; savePrices(); fillPrices(); toast('Reset to the starter list.');
+        if (!confirm('Replace the work type list and bundles with the starter ones? Your edits to work types, parts and bundles will be lost.')) return;
+        var d = defaultPrices(); P.asm = d.asm; P.bundles = d.bundles; openParts = {}; savePrices(); fillPrices(); toast('Reset to the starter list.');
+      });
+      // bundles (Price list)
+      $e('bundles').addEventListener('input', function (e) {
+        var bx = e.target.closest('[data-bid]'); if (!bx || !e.target.dataset.bf) return;
+        var b = P.bundles.filter(function (x) { return x.id === bx.dataset.bid; })[0]; if (!b) return;
+        var tr = e.target.closest('tr[data-bi]');
+        if (tr) { var it = b.items[+tr.dataset.bi]; if (!it) return; if (e.target.dataset.bf === 'qty') it.qty = num(e.target.value); else it.asm = e.target.value; }
+        else b.name = e.target.value;
+        savePrices();
+      });
+      $e('bundles').addEventListener('click', function (e) {
+        var bx = e.target.closest('[data-bid]'); if (!bx) return;
+        var b = P.bundles.filter(function (x) { return x.id === bx.dataset.bid; })[0]; if (!b) return;
+        if (e.target.closest('[data-bdel]')) { if (!confirm('Delete the bundle "' + b.name + '"?')) return; P.bundles = P.bundles.filter(function (x) { return x !== b; }); }
+        else if (e.target.closest('[data-bidel]')) b.items.splice(+e.target.closest('tr[data-bi]').dataset.bi, 1);
+        else if (e.target.closest('[data-biadd]')) { if (!P.asm.length) return; b.items.push({ asm: P.asm[0].id, qty: 1 }); }
+        else return;
+        savePrices(); fillBundles();
+      });
+      $e('bu-new').addEventListener('click', function () { P.bundles.push({ id: uid(), name: 'New bundle', items: [] }); savePrices(); fillBundles(); });
+      // results
+      $e('rs').addEventListener('input', function (e) {
+        var t = e.target;
+        if (t.id === 'e-rs-note') { S.actual.note = t.value; saveDraft(); return; }
+        if (!t.dataset.ra) return;
+        if (t.dataset.ra === 'x') S.actual.extra = t.value;
+        else { var tr = t.closest('tr[data-gk]'); if (!tr) return; var k = tr.dataset.gk; (S.actual.g[k] || (S.actual.g[k] = {}))[t.dataset.ra] = t.value; }
+        S.actual.done = false; saveDraft(); rsFill();
+      });
+      $e('rs').addEventListener('click', function (e) {
+        if (e.target.closest('#e-rs-save')) { saveDraft(); doSave(); }
+        else if (e.target.closest('#e-rs-rec')) recordJob();
+      });
+      $e('learn').addEventListener('click', function (e) {
+        var rm = e.target.closest('[data-hrm]');
+        if (rm) { var j = P.hist[+rm.dataset.hrm]; if (j && confirm('Remove "' + j.name + '" from the learning history?')) { P.hist.splice(+rm.dataset.hrm, 1); savePrices(); renderLearn(); } return; }
+        var u = e.target.closest('[data-use]'); if (!u) return;
+        var name = u.closest('tr').dataset.ln, r = histGroups().filter(function (x) { return x.n === name; })[0], a = P.asm.filter(function (x) { return x.name === name; })[0];
+        if (!r || !a) return;
+        if (u.dataset.use === 'h') { a.hrs = Math.round(r.hh / r.hu * 1000) / 1000; toast('Labor hours per ' + a.unit + ' for "' + a.name + '" set to ' + a.hrs + '.'); }
+        else {
+          var parts = effMat(a) - num(a.mat), want = r.mm / r.mu;
+          a.mat = Math.max(0, Math.round((want - parts) * 100) / 100);
+          toast(want < parts ? 'The parts alone already cost more than your real material cost. Other material set to 0.' : 'Other material for "' + a.name + '" set to ' + fm(a.mat) + ' so the total is ' + fm(effMat(a)) + ' per ' + a.unit + '.');
+        }
+        a.starter = false; savePrices(); renderLearn();
+      });
+      // bundles (Estimate tab)
+      $e('bu-sel').addEventListener('change', renderBundlePick);
+      $e('bu-body').addEventListener('input', function () { /* quantities are read when you click Add */ });
+      $e('bu-add').addEventListener('click', function () {
+        var b = bundleById($e('bu-sel').value); if (!b) { banner('Pick a bundle first.', 'err'); return; }
+        var waste = num($e('bu-waste').value), n = 0;
+        $$('#e-bu-body [data-bq]').forEach(function (inp) {
+          var q = num(inp.value); if (!(q > 0) || !asmById(inp.dataset.bq)) return;
+          if (addAssembly(inp.dataset.bq, q, waste, b.name)) n++;
+        });
+        if (!n) { banner('Type a quantity for at least one item.', 'err'); return; }
+        renderEstimate(); toast('Added ' + n + ' work type' + (n === 1 ? '' : 's') + ' from "' + b.name + '".');
       });
       // takeoff
       ctxP = $e('plan').getContext('2d'); ctxO = $e('ov').getContext('2d');
@@ -3150,14 +3455,16 @@
         steps: [
           ['Fill in the job', 'Customer, job name, address and date. The scope notes show on the quote, so say what is and is not included.'],
           ['Quick add a work type', 'Pick a work type (like <i>Tile - floor</i>), type the quantity in its unit, set the waste %, click <i>Add to estimate</i>. It adds a labor line and a material line from the Price list.'],
+          ['Add a whole bundle', 'Under <i>Job bundles</i> pick a bundle (like <i>Shower tile package</i>), change any quantity, and click <i>Add whole bundle</i>. Every work type in it goes onto the estimate at once.'],
           ['Frame with the calculator', 'For lumber, use the <i>Framing calculator</i>. Pick what you are framing, type the length, spacing, height and openings, check the pieces it lists, then click <i>Add framing to estimate</i>.'],
           ['Check the line items', 'Change any quantity or price. A labor line with a blank price uses your labor rate. The <i>+ Labor, + Material, + Dump, + Travel, + Other</i> buttons add your own lines.'],
           ['Read the totals', 'You get the price for check or ACH, cash (discounted) and card (with the fee).'],
-          ['Take the Material list shopping', 'The <i>Material list</i> below the totals shows only what to buy. Use <i>Copy list</i> or <i>Print list</i>.'],
+          ['Check the profit meter', 'Under the totals, the <i>Profit meter</i> compares the price to what the job really costs you (labor at your cost per hour from the Overhead tab, materials at cost, dump and travel). Green means you hit your profit target. If it is red it tells you the price that would.'],
+          ['Take the Material list shopping', 'The <i>Material list</i> below the totals shows only what to buy, in whole boxes, bags and sheets. Use <i>Copy list</i> or <i>Print list</i>.'],
           ['Save it', 'Type a name next to <i>Save this estimate as</i> and click Save. Open it again from the list below.']
         ],
-        ex: '<b>Master bath floor, 60 SF</b> (starter numbers).<br>Work type <i>Tile - floor</i>, quantity 60, waste 10%.<br>Labor: 60 SF x 0.20 hr = 12 hrs x $150 = <b>$1,800</b>.<br>Material: 66 SF x $8 = <b>$528</b>.<br>Add + Dump $150 and + Travel $150. Total <b>$2,628</b>.',
-        watch: ['A line marked <i>starter values</i> uses placeholder prices. Put your real numbers in the Price list before you quote.', 'Waste % adds extra material (10% of 60 SF is 6 SF more).']
+        ex: '<b>Master bath floor, 60 SF</b> (starter numbers).<br>Work type <i>Tile - floor</i>, quantity 60, waste 10%.<br>Labor: 60 SF x 0.20 hr = 12 hrs x $150 = <b>$1,800</b>.<br>Material: 66 SF needed, so <b>7 boxes of tile</b> (10 SF each), <b>2 bags of thinset</b> and <b>1 bag of grout</b>, plus a little other material.<br>Add + Dump $150 and + Travel $150, then read the Profit meter.',
+        watch: ['A line marked <i>starter values</i> uses placeholder prices. Put your real numbers in the Price list before you quote.', 'Waste % adds extra material (10% of 60 SF is 6 SF more).', 'The profit meter is only as good as the Overhead tab. Fill that in first.']
       },
       'est-takeoff': {
         t: 'Estimator: Plan takeoff',
@@ -3179,11 +3486,13 @@
         steps: [
           ['Rates', 'Labor rate per hour, material markup %, contingency %, default dump and travel, cash discount %, card fee % and how many days a quote stays valid.'],
           ['Framing lumber', 'Type what you pay per linear foot for each board size, how many labor hours it takes per piece, and the hardware %.'],
-          ['Work types', 'Each row is a kind of work. Set its unit (SF, LF, EA or HR), the labor hours for one unit and the material cost for one unit, and say what the material is.'],
-          ['Add or reset', '<i>+ Add work type</i> adds a row. <i>Reset to starter list</i> puts my placeholder rows back, so use it carefully.']
+          ['Work types', 'Each row is a kind of work. Set its unit (SF, LF, EA or HR), the labor hours for one unit and the <i>Other material</i> cost for loose items per unit.'],
+          ['Parts', 'Click <i>Parts</i> on a row to list what you buy for it: the name, how many units one pack covers, what it comes in (box, bag, sheet) and the price per pack. The estimate rounds each part up to whole packs.'],
+          ['Job bundles', 'At the bottom, <i>+ New bundle</i> makes a set of work types with starting quantities. Name it, click <i>+ Add work type</i> for each piece and type its usual quantity.'],
+          ['Add or reset', '<i>+ Add work type</i> adds a row. <i>Reset to starter list</i> puts my placeholder rows and bundles back, so use it carefully.']
         ],
-        ex: '<b>Tile - floor.</b> If your tiler sets 5 SF in an hour, labor hours per unit is 1 / 5 = <b>0.2</b>. If tile, thinset and grout cost $8 for every SF, material $ per unit is <b>8</b>.<br>A 2x4 x 8 ft at $0.90 per LF costs 0.90 x 8 = <b>$7.20</b> a board.',
-        watch: ['Rows marked <i>starter</i> are placeholders, not your real costs. Edit a row and the mark goes away.', 'Changes save by themselves a moment after you stop typing.']
+        ex: '<b>Tile - floor.</b> If your tiler sets 5 SF in an hour, labor hours per unit is 1 / 5 = <b>0.2</b>.<br>Parts: floor tile, a box covers 10 SF at $60. Thinset, a 50 lb bag covers 60 SF at $28. For 66 SF it buys 7 boxes and 2 bags.<br>A 2x4 x 8 ft at $0.90 per LF costs 0.90 x 8 = <b>$7.20</b> a board.',
+        watch: ['Rows marked <i>starter</i> are placeholders, not your real costs. Edit a row and the mark goes away.', 'Changes save by themselves a moment after you stop typing.', 'Deleting a work type also takes it out of any bundle.']
       },
       'est-quote': {
         t: 'Estimator: Quote and portal',
@@ -3196,6 +3505,19 @@
         ],
         ex: 'Master bath, total $2,628. Choose <i>Jane Smith</i> and <i>Master bath</i>, click Add to portal job and tap again. The labor, material, dump and travel lines now show on her portal. Click Open this customer, then create the invoice.',
         watch: ['Nothing is invoiced or emailed from this page.', 'If you post the same estimate to the same job twice, it warns you first.', 'Check that no line is marked <i>starter</i> before a customer sees it.']
+      },
+      'est-results': {
+        t: 'Estimator: Results',
+        intro: 'After a job, type what it really took. You see where the estimate was off, what you actually made, and the Price list learns from it.',
+        steps: [
+          ['Open the estimate', 'Open the saved estimate for the finished job on the Estimate tab, then come to Results.'],
+          ['Type the actuals', 'For each work type, type the hours it really took and the material you really spent. Dump, travel and other go on the last row. Leave a box blank if you did not track it.'],
+          ['Read the profit', 'The summary shows the estimated profit and the actual profit, using your cost per hour from the Overhead tab.'],
+          ['Record the job', 'Click <i>Record as a finished job</i>. It saves the numbers with the estimate and adds the job to the history.'],
+          ['Let the Price list learn', 'Under <i>What finished jobs say</i>, each work type shows your Price list number next to the average of your real jobs. Click <i>Use</i> to put the real number into the Price list.']
+        ],
+        ex: '<b>Master bath floor, 60 SF.</b> Estimate said 12 hrs. It took 15, so hours are off by +25%. After a few jobs <i>Tile - floor</i> averages 0.25 hrs per SF against 0.20 in the Price list. Click <i>Use</i> and the next estimate carries 0.25.',
+        watch: ['Only lines made by Quick add or a bundle can be learned from. Lines you typed by hand are compared but not learned.', 'One job is a small sample. Wait for two or three before you trust an average.', 'Recording the same job again replaces it, it does not count twice.']
       },
       oh: {
         t: 'Overhead',
@@ -3224,13 +3546,13 @@
         watch: ['These lists are saved on this device only.', 'The starter lists are suggestions. Remove or add tools until they match what FLFC really carries.']
       }
     };
-    var ORDER = [['cust', 'Customers'], ['out', 'Outreach'], ['est-estimate', 'Estimate'], ['est-takeoff', 'Plan takeoff'], ['est-prices', 'Price list'], ['est-quote', 'Quote'], ['oh', 'Overhead'], ['tool', 'Tools']];
+    var ORDER = [['cust', 'Customers'], ['out', 'Outreach'], ['est-estimate', 'Estimate'], ['est-takeoff', 'Plan takeoff'], ['est-prices', 'Price list'], ['est-quote', 'Quote'], ['est-results', 'Results'], ['oh', 'Overhead'], ['tool', 'Tools']];
     var isOpen = false, forced = null, el = document.getElementById('help'), btn = document.getElementById('tabHelp');
     function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
     function currentKey() {
       var tab = typeof curTab === 'string' ? curTab : 'cust';
       if (tab !== 'est') return tab;
-      var subs = ['estimate', 'takeoff', 'prices', 'quote'];
+      var subs = ['estimate', 'takeoff', 'prices', 'quote', 'results'];
       for (var i = 0; i < subs.length; i++) { var s = document.getElementById('e-sec-' + subs[i]); if (s && !s.hidden) return 'est-' + subs[i]; }
       return 'est-estimate';
     }
