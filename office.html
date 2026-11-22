@@ -1946,7 +1946,7 @@
       var annual = s.rows.reduce(function (t, r) { return t + n(r.a) * (FREQ[r.f] ? FREQ[r.f][1] : 1); }, 0);
       var paid = n(s.people) * n(s.hpw) * n(s.wks);
       var hours = paid * n(s.util) / 100;
-      var o = { annual: annual, hours: hours, ok: hours > 0, profitPct: n(s.profit) };
+      var o = { annual: annual, hours: hours, ok: hours > 0, profitPct: n(s.profit), people: n(s.people) };
       o.perHr = hours > 0 ? annual / hours : 0;
       o.wageHr = hours > 0 ? n(s.wage) * paid / hours : 0;     // pay for non-billable hours is spread over the billable ones
       o.costHr = o.wageHr + o.perHr;
@@ -2279,9 +2279,9 @@
       });
     }
     function cloneJ(o) { return JSON.parse(JSON.stringify(o)); }
-    function defaultPrices() { var asm = STARTER.map(function (a) { return cloneJ(a); }); return { labor: 150, markup: 0, cont: 0, dump: 150, travel: 150, cash: 10, card: 3, valid: 30, oos: 20, frame: defaultFrame(), asm: asm, bundles: defaultBundles(asm), hist: [] }; }
+    function defaultPrices() { var asm = STARTER.map(function (a) { return cloneJ(a); }); return { labor: 150, markup: 0, cont: 0, dump: 150, travel: 150, cash: 10, card: 3, valid: 30, oos: 20, fu: 7, pay: [{ n: 'Deposit to start', pct: 30 }, { n: 'Rough-in complete', pct: 40 }, { n: 'Final completion', pct: 30 }], follow: [], frame: defaultFrame(), asm: asm, bundles: defaultBundles(asm), hist: [] }; }
     function freshActual() { return { g: {}, extra: '', note: '', done: false }; }
-    function freshState() { return { estId: '', job: { customer: '', job: '', address: '', date: new Date().toISOString().slice(0, 10), notes: '', state: 'NH' }, items: [], takeoff: { file: '', cal: {}, meas: [] }, posted: null, actual: freshActual() }; }
+    function freshState() { return { estId: '', job: { customer: '', job: '', address: '', date: todayStr(), notes: '', state: 'NH' }, items: [], takeoff: { file: '', cal: {}, meas: [] }, posted: null, actual: freshActual(), fid: '', baseName: 'Good', tiers: [], pick: 0, pay: { on: false, rows: null }, sched: { start: '', crew: '', hpd: 8, onQuote: false }, sent: '', photos: [] }; }
     function fixState(s) {
       if (!s || !Array.isArray(s.items)) return freshState();
       if (!s.job) s.job = freshState().job;
@@ -2289,6 +2289,10 @@
       if (!s.takeoff) s.takeoff = { file: '', cal: {}, meas: [] };
       if (!s.actual || typeof s.actual !== 'object') s.actual = freshActual();
       if (!s.actual.g) s.actual.g = {};
+      var f = freshState();
+      ['fid', 'baseName', 'tiers', 'pick', 'pay', 'sched', 'sent', 'photos'].forEach(function (k) { if (s[k] == null) s[k] = f[k]; });
+      if (!Array.isArray(s.tiers)) s.tiers = []; if (!Array.isArray(s.photos)) s.photos = [];
+      if (s.pick > s.tiers.length) s.pick = 0;
       return s;
     }
     function fixPrices(p) {
@@ -2305,6 +2309,8 @@
       if (!Array.isArray(p.bundles)) p.bundles = defaultBundles(p.asm);
       p.bundles.forEach(function (b) { if (!Array.isArray(b.items)) b.items = []; });
       if (!Array.isArray(p.hist)) p.hist = [];
+      if (!Array.isArray(p.follow)) p.follow = [];
+      if (!Array.isArray(p.pay) || !p.pay.length) p.pay = d.pay;
       return p;
     }
 
@@ -2335,6 +2341,7 @@
           P = P || fixPrices(lsGet(K_PRICES, null));
           setStatus('Saving on this device only (' + ((d && d.error) || 'backend not updated') + '). Update the Apps Script to save to the office.', true);
         }
+        updateFuBadge();
       });
     }
 
@@ -2345,10 +2352,16 @@
       if (it.cat === 'Material') t *= (1 + num(P.markup) / 100);
       return t;
     }
-    function calc() {
+    // Quote options: S.tiers are Better / Best style variants of the base estimate. S.pick: 0 = not chosen yet, -1 = the base option, 1.. = a tier.
+    function tierOf(i) { return i > 0 && S.tiers && S.tiers[i - 1] ? S.tiers[i - 1] : null; }
+    function calc(ti) {
+      var t = tierOf(ti === undefined ? S.pick : ti), lf = t ? 1 + num(t.laborPct) / 100 : 1, mf = t ? 1 + num(t.matPct) / 100 : 1;
       var c = { Labor: 0, Material: 0, Dump: 0, Travel: 0, Other: 0, hours: 0 };
       S.items.forEach(function (it) { c[it.cat] = (c[it.cat] || 0) + lineTotal(it); if (it.cat === 'Labor') c.hours += num(it.qty); });
-      c.sub = c.Labor + c.Material + c.Dump + c.Travel + c.Other;
+      c.rawLabor = c.Labor; c.lf = lf; c.mf = mf; c.tier = t;
+      c.Labor *= lf; c.hours *= lf; c.Material *= mf;
+      c.addOn = t ? num(t.addOn) : 0;
+      c.sub = c.Labor + c.Material + c.Dump + c.Travel + c.Other + c.addOn;
       c.cont = c.sub * num(P.cont) / 100;
       // Out of state (MA, VT, ME): add the surcharge to the total. The customer never sees it; it is folded into the Labor amount on the quote and portal.
       c.oos = S.job.state && S.job.state !== 'NH' ? round2((c.sub + c.cont) * num(P.oos) / 100) : 0;
@@ -2461,8 +2474,10 @@
           '<div><label>Cash discount %</label><input id="e-r-cash" type="number" min="0" step="any"></div>' +
           '<div><label>Card fee %</label><input id="e-r-card" type="number" min="0" step="any"></div>' +
           '<div><label>Quote valid for (days)</label><input id="e-r-valid" type="number" min="1" step="1"></div>' +
-          '<div><label>Out-of-state surcharge % (MA, VT, ME)</label><input id="e-r-oos" type="number" min="0" step="any"></div></div>' +
+          '<div><label>Out-of-state surcharge % (MA, VT, ME)</label><input id="e-r-oos" type="number" min="0" step="any"></div>' +
+          '<div><label>Follow up on a sent quote after (days)</label><input id="e-r-fu" type="number" min="1" step="1"></div></div>' +
           '<p class="muted">Labor, dump and travel start at $150 from recent invoices. Markup and contingency start at 0. The out-of-state surcharge is added to the total of jobs outside NH and is hidden inside Labor on the customer\'s quote.</p></section>' +
+        '<section class="card"><h2>Price check</h2><div id="e-stale"></div><p class="muted">The links open a search at the store in a new tab. Prices are not pulled in automatically, because store sites do not allow it. Type the price you see and the date fills in.</p></section>' +
         '<section class="card" id="e-fp-card"><h2>Framing lumber</h2><div class="banner" id="e-fp-banner" style="background:#fbf1e3;color:#7a4a10" hidden>These are <b>starter</b> placeholder prices, not the real FLFC costs. Edit any number and this mark goes away.</div>' +
           '<div class="grid2">' +
             '<div><label>2x4 ($ per LF)</label><input id="e-fp-2x4" type="number" min="0" step="any"></div>' +
@@ -2471,7 +2486,9 @@
             '<div><label>2x10 ($ per LF)</label><input id="e-fp-2x10" type="number" min="0" step="any"></div>' +
             '<div><label>2x12 ($ per LF)</label><input id="e-fp-2x12" type="number" min="0" step="any"></div>' +
             '<div><label>Labor hrs per piece</label><input id="e-fp-hrs" type="number" min="0" step="any"></div>' +
-            '<div><label>Hardware % of lumber</label><input id="e-fp-fasten" type="number" min="0" step="any"></div></div>' +
+            '<div><label>Hardware % of lumber</label><input id="e-fp-fasten" type="number" min="0" step="any"></div>' +
+            '<div><label>Lumber prices checked</label><input id="e-fp-chk" type="date"></div>' +
+            '<div class="fix" style="padding-bottom:8px"><a href="https://www.homedepot.com/s/2x4%20lumber" target="_blank" rel="noopener">Home Depot lumber</a> &middot; <a href="https://www.lowes.com/search?searchTerm=2x4%20lumber" target="_blank" rel="noopener">Lowe\'s lumber</a></div></div>' +
           '<p class="muted">Used by the Framing calculator. A board costs its price per LF times its length (a 2x4 x 8 ft at $0.90 per LF is $7.20). Labor is hours per piece cut and set.</p></section>' +
         '<section class="card"><h2>Work types</h2><div class="banner" style="background:#fbf1e3;color:#7a4a10">Rows marked <b>starter</b> are placeholder numbers, not FLFC\'s real costs. Edit a row and the mark goes away. Check them before sending any quote.</div>' +
           '<div class="tblwrap"><table id="e-asm"><thead><tr><th>Work type</th><th style="width:70px">Unit</th><th style="width:100px" class="num">Labor hrs / unit</th><th style="width:110px" class="num">Material $ / unit</th><th>Other material</th><th style="width:130px"></th><th style="width:36px"></th></tr></thead><tbody></tbody></table></div>' +
@@ -2482,12 +2499,18 @@
           '<p class="muted">A bundle is a set of work types you often sell together, with starting quantities. On the Estimate tab you pick it, adjust the quantities and add it all at once.</p></section>' +
       '</div>' +
       '<div id="e-sec-results" hidden>' +
+        '<section class="card"><h2>Quotes waiting on an answer</h2><div id="e-fulist"></div></section>' +
         '<section class="card"><h2>Estimate vs actual</h2><div id="e-rs"></div></section>' +
         '<section class="card"><h2>What finished jobs say</h2><div id="e-learn"></div></section>' +
       '</div>' +
 
       '<div id="e-sec-quote" hidden>' +
         '<section class="card"><div class="bar"><label class="show" style="font-size:13px"><input type="checkbox" id="e-q-detail"> Show every line item</label><button class="go" id="e-q-print">Print / save as PDF</button><button class="alt" id="e-q-copy">Copy quote text</button></div></section>' +
+        '<section class="card"><h2>Quote options (Good / Better / Best)</h2><div id="e-opt"></div></section>' +
+        '<section class="card"><h2>Payment schedule</h2><div id="e-pay"></div></section>' +
+        '<section class="card"><h2>Time on site</h2><div id="e-sch"></div></section>' +
+        '<section class="card"><h2>Photo notes</h2><div id="e-ph"></div></section>' +
+        '<section class="card"><h2>Follow-up</h2><div id="e-fu"></div></section>' +
         '<div id="e-quote-wrap" style="margin-top:14px"><div id="e-quote" class="estQuote"></div></div>' +
         '<section class="card"><h2>Send to a customer\'s portal job</h2>' +
           '<p class="muted">Adds the quote lines to the job as portal line items (type Original). The customer can see them in their portal right away. The invoice total on the job then fills in from these lines. Nothing is invoiced or emailed from here.</p>' +
@@ -2508,7 +2531,7 @@
       if (name === 'estimate') renderEstimate();
       if (name === 'takeoff') { ensurePdfJs(); renderMeas(); drawOverlay(); updateScaleStatus(); }
       if (name === 'prices') fillPrices();
-      if (name === 'quote') { renderQuote(); loadHandoffCustomers(); }
+      if (name === 'quote') { renderQuote(); renderExtras(); loadPhotos().then(renderQuote); loadHandoffCustomers(); }
       if (window.helpRefresh) window.helpRefresh();
     }
 
@@ -2544,6 +2567,7 @@
     }
     function renderResults() {
       var box = $e('rs'); if (!box) return;
+      renderFuList();
       var G = groupsOf(), A = S.actual;
       if (!G.length) { box.innerHTML = '<div class="muted">Build or open an estimate first. After the job, come back here and type what it really took.</div>'; renderLearn(); return; }
       box.innerHTML = '<p class="muted">Job: <b>' + esc([S.job.customer, S.job.job].filter(Boolean).join(' - ') || 'Untitled estimate') + '</b>. Type what the job really took. Leave a box blank if you did not track it.</p>' +
@@ -2649,7 +2673,9 @@
       // Parts are bought whole: tile by the box, thinset by the bag, drywall by the sheet.
       parts.forEach(function (c) {
         var packs = Math.max(1, Math.ceil(matQty / num(c.cover) - 1e-9));
-        push({ id: uid(), cat: 'Material', desc: (c.n || 'Part') + ' (' + (c.pack || 'pack') + ', covers ' + round2(num(c.cover)) + ' ' + a.unit + ')' + lbl + ' - ' + round2(matQty) + ' ' + a.unit + ' needed', qty: packs, unit: c.pack || 'pack', price: num(c.price), starter: st });
+        // pk/pn/pc/... let the Material list merge the same part across work types and round once (see matMerged).
+        push({ id: uid(), cat: 'Material', desc: (c.n || 'Part') + ' (' + (c.pack || 'pack') + ', covers ' + round2(num(c.cover)) + ' ' + a.unit + ')' + lbl + ' - ' + round2(matQty) + ' ' + a.unit + ' needed', qty: packs, unit: c.pack || 'pack', price: num(c.price), starter: st,
+          pk: [c.n, c.pack, num(c.cover), num(c.price)].join('|').toLowerCase(), pnm: c.n || 'Part', pn: matQty, pc: num(c.cover), pu: a.unit, pq: packs, pp: num(c.price), pd: c.chk || '' });
       });
       if (num(a.mat) > 0) push({ id: uid(), cat: 'Material', desc: (parts.length ? 'Other materials' + (a.matDesc ? ' (' + a.matDesc + ')' : '') + ' - ' + a.name : (a.matDesc || a.name)) + lbl + (waste ? ' (+' + waste + '% waste)' : ''), qty: matQty, unit: a.unit, price: a.mat, starter: st });
       saveDraft(); return true;
@@ -2684,6 +2710,7 @@
       if (c.Dump) h += '<div>Dump</div><div>' + fm(c.Dump) + '</div>';
       if (c.Travel) h += '<div>Travel</div><div>' + fm(c.Travel) + '</div>';
       if (c.Other) h += '<div>Other</div><div>' + fm(c.Other) + '</div>';
+      if (c.addOn) h += '<div>Option add-on (' + esc(c.tier.name) + ')</div><div>' + fm(c.addOn) + '</div>';
       if (c.cont) h += '<div>Contingency (' + P.cont + '%)</div><div>' + fm(c.cont) + '</div>';
       if (c.oos) h += '<div class="muted">Out of state, ' + esc(S.job.state) + ' (+' + P.oos + '%). Internal: the customer sees it inside Labor</div><div class="muted">' + fm(c.oos) + '</div>';
       h += '<div class="big">Total (check / ACH)</div><div class="big">' + fm(c.total) + '</div>';
@@ -2697,7 +2724,8 @@
     function costBasis() { var o = window.__ohResult ? window.__ohResult() : null; return o && o.ok ? o : null; }
     function costSplit() {
       var s = { hrs: 0, mat: 0, other: 0 };
-      S.items.forEach(function (it) { if (it.cat === 'Labor') s.hrs += num(it.qty); else if (it.cat === 'Material') s.mat += matCost(it); else s.other += lineTotal(it); });
+      S.items.forEach(function (it) { if (it.cat === 'Labor') s.hrs += num(it.qty); else if (it.cat !== 'Material') s.other += lineTotal(it); });
+      matMerged().forEach(function (m) { s.mat += m.cost; });   // what you would actually buy
       return s;
     }
     function renderProfit() {
@@ -2705,7 +2733,9 @@
       var o = costBasis();
       if (!S.items.length) { box.innerHTML = '<div class="muted">Add line items and your profit shows here.</div>'; return; }
       if (!o) { box.innerHTML = '<div class="muted">Fill in the <b>Overhead</b> tab (crew, hours and yearly costs) so the meter knows what an hour of work really costs you.</div>'; return; }
-      var c = calc(), s = costSplit(), labor = s.hrs * o.costHr, cost = labor + s.mat + s.other;
+      var c = calc(), s = costSplit();
+      s.hrs *= c.lf; s.mat *= c.mf; s.other += c.addOn;     // the picked quote option changes cost too
+      var labor = s.hrs * o.costHr, cost = labor + s.mat + s.other;
       var profit = c.total - cost, margin = c.total > 0 ? profit / c.total * 100 : 0, target = o.profitPct;
       var need = target < 100 ? cost / (1 - target / 100) : 0;
       var cashProfit = c.cash - cost, cashMargin = c.cash > 0 ? cashProfit / c.cash * 100 : 0;
@@ -2727,18 +2757,37 @@
     // ----- material list (Material lines only, for buying) -----
     function matRows() { return S.items.filter(function (i) { return i.cat === 'Material'; }); }
     function matCost(i) { return num(i.qty) * num(i.price); }
+    // The buy list: the same part used by several work types is added up and rounded once (thinset for the wall and the pan = one pile).
+    // A line you edited by hand is left exactly as typed.
+    function matMerged() {
+      var out = [], by = {};
+      matRows().forEach(function (i) {
+        var plain = !i.pk || num(i.qty) !== num(i.pq) || num(i.price) !== num(i.pp) || !(num(i.pc) > 0);
+        if (plain) { out.push({ desc: i.desc || 'Material', qty: num(i.qty), unit: i.unit || '', price: num(i.price), cost: matCost(i), line: matCost(i) }); return; }
+        var g = by[i.pk];
+        if (!g) { g = by[i.pk] = { merge: true, nm: i.pnm, pack: i.unit, cover: num(i.pc), price: num(i.price), u: i.pu, need: 0, n: 0, line: 0 }; out.push(g); }
+        g.need += num(i.pn); g.n++; g.line += matCost(i);
+      });
+      out.forEach(function (g) {
+        if (!g.merge) return;
+        g.qty = Math.max(1, Math.ceil(g.need / g.cover - 1e-9)); g.unit = g.pack; g.cost = g.qty * g.price;
+        g.desc = g.nm + ' (' + g.pack + ', covers ' + round2(g.cover) + ' ' + g.u + ') - ' + round2(g.need) + ' ' + g.u + ' needed' + (g.n > 1 ? ' across ' + g.n + ' work types' : '');
+      });
+      return out;
+    }
     function renderMatList() {
       var b = $e('mat'); if (!b) return;
-      var R = matRows(), tot = 0;
+      var R = matMerged(), tot = 0, line = 0;
       if (!R.length) { b.innerHTML = '<div class="muted">No material lines yet. Add a work type or measure a plan and the materials show up here.</div>'; return; }
       b.innerHTML = '<div class="tblwrap"><table class="matlist"><thead><tr><th>Material</th><th class="num">Qty</th><th>Unit</th><th class="num">Each</th><th class="num">Cost</th></tr></thead><tbody>' +
-        R.map(function (i) { tot += matCost(i); return '<tr><td>' + esc(i.desc || 'Material') + '</td><td class="num">' + esc(round2(num(i.qty))) + '</td><td>' + esc(i.unit || '') + '</td><td class="num">' + (num(i.price) ? fm(num(i.price)) : '') + '</td><td class="num">' + fm(matCost(i)) + '</td></tr>'; }).join('') +
-        '</tbody><tfoot><tr><td colspan="4"><strong>Total materials (before markup)</strong></td><td class="num"><strong>' + fm(tot) + '</strong></td></tr></tfoot></table></div>';
+        R.map(function (i) { tot += i.cost; line += i.line; return '<tr><td>' + esc(i.desc) + '</td><td class="num">' + esc(round2(i.qty)) + '</td><td>' + esc(i.unit) + '</td><td class="num">' + (i.price ? fm(i.price) : '') + '</td><td class="num">' + fm(i.cost) + '</td></tr>'; }).join('') +
+        '</tbody><tfoot><tr><td colspan="4"><strong>Total materials (before markup)</strong></td><td class="num"><strong>' + fm(tot) + '</strong></td></tr>' +
+        (line - tot > 0.005 ? '<tr><td colspan="5" class="muted">Buying identical parts together saves ' + fm(line - tot) + ' compared with the estimate lines, which are priced per work type.</td></tr>' : '') + '</tfoot></table></div>';
     }
     function matText() {
-      var R = matRows(), tot = 0;
+      var R = matMerged(), tot = 0;
       return 'Material list' + (S.job.job || S.job.customer ? ' - ' + [S.job.customer, S.job.job].filter(Boolean).join(' - ') : '') + '\n\n' +
-        R.map(function (i) { tot += matCost(i); return round2(num(i.qty)) + ' ' + (i.unit || '') + '  ' + (i.desc || 'Material') + (num(i.price) ? '  @ ' + fm(num(i.price)) : ''); }).join('\n') +
+        R.map(function (i) { tot += i.cost; return round2(i.qty) + ' ' + i.unit + '  ' + i.desc + (i.price ? '  @ ' + fm(i.price) : ''); }).join('\n') +
         '\n\nTotal materials (before markup): ' + fm(tot);
     }
     function renderSaved() {
@@ -2749,6 +2798,7 @@
     }
     function renderEstimate() {
       Object.keys(JOBF).forEach(function (id) { $e(id).value = S.job[JOBF[id]] || ''; });
+      updateFuBadge();
       $$('#e-j-state [data-state]').forEach(function (b) { b.className = b.dataset.state === S.job.state ? 'go small' : 'alt small'; });
       $e('j-statenote').textContent = S.job.state !== 'NH' ? '+' + P.oos + '% added to the total, hidden inside Labor for the customer.' : '';
       renderAsmSelect(); renderBundleSelect(); renderItems(); renderTotals(); renderSaved(); frInit(); frRender();
@@ -2809,10 +2859,12 @@
       FR_SIZES.forEach(function (s) { $e('fp-' + s).value = P.frame.price[s]; });
       $e('fp-hrs').value = P.frame.hrs; $e('fp-fasten').value = P.frame.fasten;
       $e('fp-banner').hidden = !P.frame.starter;
+      $e('fp-chk').value = P.frame.chk || '';
     }
     function frPriceEdit(e) {
       var id = e.target.id.replace('e-fp-', '');
-      if (FR_SIZES.indexOf(id) >= 0) P.frame.price[id] = num(e.target.value);
+      if (id === 'chk') { P.frame.chk = e.target.value; savePrices(); renderStale(); return; }
+      if (FR_SIZES.indexOf(id) >= 0) { P.frame.price[id] = num(e.target.value); P.frame.chk = todayStr(); $e('fp-chk').value = P.frame.chk; renderStale(); }
       else if (id === 'hrs') P.frame.hrs = num(e.target.value);
       else if (id === 'fasten') P.frame.fasten = num(e.target.value);
       else return;
@@ -2820,7 +2872,7 @@
     }
 
     // ----- prices -----
-    var RATES = { 'r-labor': 'labor', 'r-markup': 'markup', 'r-cont': 'cont', 'r-dump': 'dump', 'r-travel': 'travel', 'r-cash': 'cash', 'r-card': 'card', 'r-valid': 'valid', 'r-oos': 'oos' };
+    var RATES = { 'r-labor': 'labor', 'r-markup': 'markup', 'r-cont': 'cont', 'r-dump': 'dump', 'r-travel': 'travel', 'r-cash': 'cash', 'r-card': 'card', 'r-valid': 'valid', 'r-oos': 'oos', 'r-fu': 'fu' };
     function fillPrices() {
       Object.keys(RATES).forEach(function (id) { $e(id).value = P[RATES[id]]; });
       fillFrame();
@@ -2835,15 +2887,33 @@
           '<td><button class="small danger" data-del title="Remove">&times;</button></td></tr>';
         if (!open) return row;
         row += '<tr class="partsRow" data-pid="' + a.id + '"><td colspan="7" style="background:var(--cream)"><div class="muted" style="margin-bottom:4px">Parts for <b>' + esc(a.name) + '</b>. One pack covers this many ' + esc(a.unit) + '. Material per ' + esc(a.unit) + ' with parts: <b data-eff>' + fm(effMat(a)) + '</b>.</div>' +
-          '<table><thead><tr><th>Part</th><th style="width:90px" class="num">Covers (' + esc(a.unit) + ')</th><th style="width:130px">Bought as</th><th style="width:100px" class="num">$ per pack</th><th style="width:36px"></th></tr></thead><tbody>' +
+          '<table><thead><tr><th>Part</th><th style="width:90px" class="num">Covers (' + esc(a.unit) + ')</th><th style="width:130px">Bought as</th><th style="width:100px" class="num">$ per pack</th><th style="width:140px">Price checked</th><th style="width:130px">Look up</th><th style="width:36px"></th></tr></thead><tbody>' +
           (a.comps || []).map(function (c, i) {
-            return '<tr data-ci="' + i + '"><td><input data-c="n" value="' + esc(c.n) + '"></td><td><input data-c="cover" type="number" min="0" step="any" class="num" value="' + c.cover + '"></td><td><input data-c="pack" value="' + esc(c.pack) + '"></td><td><input data-c="price" type="number" min="0" step="any" class="num" value="' + c.price + '"></td><td><button class="small danger" data-cdel title="Remove part">&times;</button></td></tr>';
+            var q = encodeURIComponent(c.n || '');
+            return '<tr data-ci="' + i + '"><td><input data-c="n" value="' + esc(c.n) + '"></td><td><input data-c="cover" type="number" min="0" step="any" class="num" value="' + c.cover + '"></td><td><input data-c="pack" value="' + esc(c.pack) + '"></td><td><input data-c="price" type="number" min="0" step="any" class="num" value="' + c.price + '"></td>' +
+              '<td><input data-c="chk" type="date" value="' + esc(c.chk || '') + '"' + (isStale(c.chk) ? ' style="border-color:var(--red)" title="Price is over ' + STALE_DAYS + ' days old or never checked"' : '') + '></td>' +
+              '<td><a href="https://www.homedepot.com/s/' + q + '" target="_blank" rel="noopener">Home Depot</a> &middot; <a href="https://www.lowes.com/search?searchTerm=' + q + '" target="_blank" rel="noopener">Lowe\'s</a></td>' +
+              '<td><button class="small danger" data-cdel title="Remove part">&times;</button></td></tr>';
           }).join('') + '</tbody></table><button class="alt small" data-cadd style="margin-top:6px">+ Add part</button></td></tr>';
         return row;
       }).join('');
-      fillBundles();
+      fillBundles(); renderStale();
     }
     var openParts = {};
+    // ----- price freshness: a part or lumber price not checked for 60 days gets flagged -----
+    var STALE_DAYS = 60;
+    function todayStr() { var d = new Date(), p = function (n) { return (n < 10 ? '0' : '') + n; }; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }   // local date, not UTC
+    function isStale(d) { if (!d) return true; var t = new Date(d + 'T12:00:00'); return isNaN(t) || (Date.now() - t.getTime()) / 864e5 > STALE_DAYS; }
+    function staleCount() {
+      var n = 0;
+      P.asm.forEach(function (a) { (a.comps || []).forEach(function (c) { if (isStale(c.chk)) n++; }); });
+      if (isStale(P.frame.chk)) n++;
+      return n;
+    }
+    function renderStale() {
+      var n = staleCount(), html = n ? '<span class="pill warn">' + n + ' price' + (n === 1 ? '' : 's') + ' to check</span> <span class="muted">These were never checked or are over ' + STALE_DAYS + ' days old. Use the Home Depot and Lowe\'s links in Parts, then type the real price. The date fills in itself.</span>' : '<span class="muted">All part and lumber prices were checked in the last ' + STALE_DAYS + ' days.</span>';
+      var b = $e('stale'); if (b) b.innerHTML = html;
+    }
     function fillBundles() {
       var box = $e('bundles'); if (!box) return;
       if (!P.bundles.length) { box.innerHTML = '<div class="muted">No bundles yet.</div>'; return; }
@@ -3042,20 +3112,70 @@
     // ----- quote -----
     function quoteLines() {
       var c = calc(), L = [];
-      var lf = c.Labor > 0 ? c.laborShown / c.Labor : 1;     // out-of-state surcharge rides inside the labor amounts
+      var lf = c.rawLabor > 0 ? c.laborShown / c.rawLabor : 1;     // out-of-state surcharge and any option change ride inside the labor amounts
+      var addL = c.addOn ? [(c.tier.desc || 'Upgrade: ' + c.tier.name), '', round2(c.addOn), 'Other'] : null;
       if ($e('q-detail').checked) {
-        S.items.forEach(function (it) { L.push([it.desc || it.cat, num(it.qty) + ' ' + (it.unit || ''), round2(lineTotal(it) * (it.cat === 'Labor' ? lf : 1)), it.cat]); });
+        S.items.forEach(function (it) { L.push([it.desc || it.cat, num(it.qty) + ' ' + (it.unit || ''), round2(lineTotal(it) * (it.cat === 'Labor' ? lf : it.cat === 'Material' ? c.mf : 1)), it.cat]); });
+        if (addL) L.push(addL);
         if (c.cont) L.push(['Contingency (' + P.cont + '%)', '', round2(c.cont), 'Other']);
-        if (c.oos && !(c.Labor > 0)) L.push(['Labor', '', round2(c.oos), 'Labor']);
+        if (c.oos && !(c.rawLabor > 0)) L.push(['Labor', '', round2(c.oos), 'Labor']);
       } else {
         if (c.laborShown) L.push(['Labor', round2(c.hours) + ' hrs', round2(c.laborShown), 'Labor']);
         if (c.Dump) L.push(['Dump', '', round2(c.Dump), 'Dump']);
         if (c.Material) L.push(['Materials', '', round2(c.Material), 'Material']);
         if (c.Travel) L.push(['Travel', '', round2(c.Travel), 'Travel']);
         if (c.Other) L.push(['Other', '', round2(c.Other), 'Other']);
+        if (addL) L.push(addL);
         if (c.cont) L.push(['Contingency', '', round2(c.cont), 'Other']);
       }
       return L;
+    }
+    // ----- quote extras: options, payment schedule, time on site, photos -----
+    var photoCache = {};
+    function pickName() { return S.pick > 0 ? (tierOf(S.pick) || {}).name || 'Option' : S.baseName || 'Good'; }
+    function optionsHtml() {
+      if (!S.tiers.length || S.pick) return '';
+      var rows = [[S.baseName || 'Good', 'Scope as listed above', calc(0)]].concat(S.tiers.map(function (t, i) { return [t.name || 'Option', t.desc || '', calc(i + 1)]; }));
+      return '<p style="margin-top:14px"><b>Your options</b></p><table><thead><tr><th>Option</th><th>What is different</th><th class="r">Check / ACH</th><th class="r">Cash</th><th class="r">Card</th></tr></thead><tbody>' +
+        rows.map(function (r) { return '<tr><td>' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td><td class="r">' + fm(r[2].total) + '</td><td class="r">' + fm(r[2].cash) + '</td><td class="r">' + fm(r[2].card) + '</td></tr>'; }).join('') + '</tbody></table>';
+    }
+    function payRowsOf() { return S.pay && Array.isArray(S.pay.rows) && S.pay.rows.length ? S.pay.rows : P.pay; }
+    function payAmounts(total) {
+      var rows = payRowsOf(), out = [], sum = 0;
+      rows.forEach(function (r, i) { var a = i === rows.length - 1 ? round2(total - sum) : round2(total * num(r.pct) / 100); sum += a; out.push(a); });
+      return out;
+    }
+    function payHtml(c) {
+      if (!S.pay.on) return '';
+      var rows = payRowsOf(), am = payAmounts(c.total);
+      return '<p style="margin-top:14px"><b>Payment schedule</b> <span class="muted">(check / ACH amounts; cash and card use the same percentages)</span></p><table><thead><tr><th>When</th><th>%</th><th class="r">Amount</th></tr></thead><tbody>' +
+        rows.map(function (r, i) { return '<tr><td>' + esc(r.n) + '</td><td>' + esc(r.pct) + '%</td><td class="r">' + fm(am[i]) + '</td></tr>'; }).join('') + '</tbody></table>';
+    }
+    function wdAdd(startStr, n) {
+      var d = new Date(startStr + 'T12:00:00');
+      while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+      while (n > 0) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0 && d.getDay() !== 6) n--; }
+      return d;
+    }
+    function fmtD(d) { return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }); }
+    function schedInfo(c) {
+      var hrs = c.hours; if (!(hrs > 0)) return null;
+      var o = costBasis(), crew = num(S.sched.crew) || (o && o.people) || 1, hpd = num(S.sched.hpd) || 8;
+      var days = Math.max(1, Math.ceil(hrs / (crew * hpd) - 1e-9)), info = { days: days, crew: crew, hpd: hpd, hrs: hrs };
+      if (S.sched.start) { info.start = wdAdd(S.sched.start, 0); info.end = wdAdd(S.sched.start, days - 1); }
+      return info;
+    }
+    function schedHtml(c) {
+      if (!S.sched.onQuote) return '';
+      var s = schedInfo(c); if (!s) return '';
+      return '<p style="margin-top:14px"><b>Estimated time on site</b><br>About ' + s.days + ' working day' + (s.days === 1 ? '' : 's') + (s.start ? ' (' + esc(fmtD(s.start)) + ' to ' + esc(fmtD(s.end)) + ')' : '') + '. Dates depend on weather, material delivery and any change in scope.</p>';
+    }
+    function photosHtml() {
+      var ph = S.photos.filter(function (p) { return p.show !== false && photoCache[p.id]; });
+      if (!ph.length) return '';
+      return '<div style="margin-top:14px"><b>Site photos</b><div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px">' + ph.map(function (p) {
+        return '<figure style="margin:0;width:46%;min-width:200px;break-inside:avoid"><img src="' + photoCache[p.id] + '" style="width:100%;border-radius:4px" alt=""><figcaption style="font-size:12px">' + esc(p.cap || '') + '</figcaption></figure>';
+      }).join('') + '</div></div>';
     }
     function longDate(s) { var d = s ? new Date(s + 'T12:00:00') : new Date(); return isNaN(d) ? '' : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }); }
     function quoteNo() { return 'EST-' + ((S.job.date || '').replace(/-/g, '') || 'DRAFT'); }
@@ -3068,16 +3188,152 @@
         (S.job.job ? '<p><b>Project:</b> ' + esc(S.job.job) + '</p>' : '') + (S.job.notes ? '<p style="white-space:pre-wrap">' + esc(S.job.notes) + '</p>' : '') +
         '<table><thead><tr><th>Description</th><th>Qty</th><th class="r">Amount</th></tr></thead><tbody>' +
         (L.length ? L.map(function (r) { return '<tr><td>' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td><td class="r">' + fm(r[2]) + '</td></tr>'; }).join('') : '<tr><td colspan="3" class="muted">No line items yet.</td></tr>') +
-        '<tr class="total"><td colspan="2">Total (check / ACH)</td><td class="r">' + fm(c.total) + '</td></tr></tbody></table>' +
+        '<tr class="total"><td colspan="2">Total (check / ACH)' + (S.tiers.length && S.pick ? ' - ' + esc(pickName()) : '') + '</td><td class="r">' + fm(c.total) + '</td></tr></tbody></table>' +
+        optionsHtml() +
         '<p style="margin-top:14px"><b>Payment options</b><br>Check or ACH: ' + fm(c.total) + ' &middot; Cash: ' + fm(c.cash) + ' (' + P.cash + '% off) &middot; Card: ' + fm(c.card) + ' (+' + P.card + '% processing)</p>' +
+        payHtml(c) + schedHtml(c) + photosHtml() +
         '<p class="muted">Financing may be available through our partner, Enhancify. Check your rate at flfconstruction.com/pricing.html. This estimate is based on the scope described above; changes to the scope may change the price.</p>';
     }
     function handoffText() {
       var c = calc();
       return ['Customer: ' + (S.job.customer || '(not set)'), 'Job: ' + (S.job.job || '(not set)'), 'Invoice line item (one line): ' + (S.job.job || 'Services'),
-        'Invoice total, check / ACH: ' + fm(c.total), 'Cash price: ' + fm(c.cash) + '    Card price: ' + fm(c.card),
+        'Invoice total, check / ACH: ' + fm(c.total) + (S.tiers.length ? ' (option: ' + pickName() + (S.pick ? '' : ', not chosen yet') + ')' : ''), 'Cash price: ' + fm(c.cash) + '    Card price: ' + fm(c.card),
+        (S.pay.on ? 'Payment schedule: ' + payRowsOf().map(function (r, i) { return r.n + ' ' + fm(payAmounts(c.total)[i]); }).join(', ') : ''),
         'Portal breakdown: Labor ' + fm(c.laborShown) + ' (' + round2(c.hours) + ' hrs), Dump ' + fm(c.Dump) + ', Material ' + fm(c.Material) + ', Travel ' + fm(c.Travel) + (c.Other ? ', Other ' + fm(c.Other) : '') + (c.cont ? ', Contingency ' + fm(c.cont) : ''),
-        'Invoice note: Itemized costs are in the customer portal.'].join('\n');
+        'Invoice note: Itemized costs are in the customer portal.'].filter(Boolean).join('\n');
+    }
+    // ----- editors for the quote extras (Quote tab) -----
+    function qRefresh() { renderQuote(); renderTotals(); }
+    function renderExtras() { renderOptions(); renderPay(); renderSched(); renderPhotos(); renderFollow(); }
+    function renderOptions() {
+      var b = $e('opt'); if (!b) return;
+      b.innerHTML = '<div class="rowf"><div style="flex:1 1 150px"><label>Name of the base option</label><input id="e-opt-base" value="' + esc(S.baseName) + '"></div>' +
+        '<div style="flex:1 1 220px"><label>Customer chose</label><select id="e-opt-pick"><option value="0">Not yet (quote shows all options)</option><option value="-1">' + esc(S.baseName) + '</option>' + S.tiers.map(function (t, i) { return '<option value="' + (i + 1) + '">' + esc(t.name) + '</option>'; }).join('') + '</select></div></div>' +
+        (S.tiers.length ? '<div class="tblwrap"><table style="margin-top:8px"><thead><tr><th style="width:130px">Option</th><th style="width:90px" class="num">Material %</th><th style="width:90px" class="num">Labor %</th><th style="width:100px" class="num">Add-on $</th><th>What is different</th><th style="width:36px"></th></tr></thead><tbody>' +
+          S.tiers.map(function (t, i) {
+            return '<tr data-ti="' + i + '"><td><input data-o="name" value="' + esc(t.name) + '"></td><td><input data-o="matPct" type="number" step="any" class="num" value="' + esc(t.matPct) + '"></td><td><input data-o="laborPct" type="number" step="any" class="num" value="' + esc(t.laborPct) + '"></td><td><input data-o="addOn" type="number" step="any" class="num" value="' + esc(t.addOn) + '"></td><td><input data-o="desc" placeholder="e.g. Porcelain tile upgrade" value="' + esc(t.desc) + '"></td><td><button class="small danger" data-orm title="Remove option">&times;</button></td></tr>';
+          }).join('') + '</tbody></table></div>' : '<div class="muted" style="margin-top:6px">No options yet. Add one and the quote shows the base option next to it.</div>') +
+        '<div class="bar" style="margin-top:8px"><button class="alt small" data-oadd>+ Add option</button></div>' +
+        '<p class="muted">An option changes the base estimate. <b>Material %</b> and <b>Labor %</b> raise or lower those costs, and <b>Add-on $</b> adds a flat upgrade. Until the customer picks, the quote shows every option side by side. Choose theirs above and every total, the portal hand-off and the profit meter follow it. The profit meter counts the add-on as a cost to stay safe.</p>';
+      $e('opt-pick').value = String(S.pick);
+    }
+    function payEditRows() { if (!Array.isArray(S.pay.rows) || !S.pay.rows.length) S.pay.rows = cloneJ(P.pay); return S.pay.rows; }
+    function renderPay() {
+      var b = $e('pay'); if (!b) return;
+      var rows = payRowsOf();
+      b.innerHTML = '<label class="show" style="font-size:13px"><input type="checkbox" id="e-pay-on"' + (S.pay.on ? ' checked' : '') + '> Show a payment schedule on the quote</label>' +
+        '<div class="tblwrap"><table style="margin-top:8px"><thead><tr><th>When</th><th style="width:80px" class="num">%</th><th style="width:110px" class="num">Amount</th><th style="width:36px"></th></tr></thead><tbody>' +
+        rows.map(function (r, i) { return '<tr data-pi="' + i + '"><td><input data-p="n" value="' + esc(r.n) + '"></td><td><input data-p="pct" type="number" step="any" class="num" value="' + esc(r.pct) + '"></td><td class="num" data-pamt></td><td><button class="small danger" data-prm title="Remove">&times;</button></td></tr>'; }).join('') + '</tbody></table></div>' +
+        '<div id="e-pay-sum" class="muted" style="margin-top:4px"></div>' +
+        '<div class="bar" style="margin-top:8px"><button class="alt small" data-padd>+ Milestone</button><button class="alt small" data-pdef>Save as my default</button>' + (Array.isArray(S.pay.rows) && S.pay.rows.length ? '<button class="alt small" data-puse>Use my default</button>' : '') + '</div>' +
+        '<p class="muted">Amounts come from the check / ACH total. The last milestone takes the remainder so the cents add up exactly.</p>';
+      payFill();
+    }
+    function payFill() {
+      var rows = payRowsOf(), am = payAmounts(calc().total), sum = rows.reduce(function (t, r) { return t + num(r.pct); }, 0);
+      $$('#e-pay [data-pamt]').forEach(function (td, i) { td.textContent = fm(am[i]); });
+      var s = $e('pay-sum'); if (s) { s.textContent = 'Percentages add up to ' + round2(sum) + '%.' + (Math.abs(sum - 100) > 0.01 ? ' They should add up to 100.' : ''); s.style.color = Math.abs(sum - 100) > 0.01 ? 'var(--red)' : ''; }
+    }
+    function renderSched() {
+      var b = $e('sch'); if (!b) return;
+      var o = costBasis();
+      b.innerHTML = '<div class="rowf"><div><label>Start date</label><input id="e-sch-start" type="date" value="' + esc(S.sched.start) + '"></div>' +
+        '<div><label>Crew size</label><input id="e-sch-crew" type="number" min="1" step="any" placeholder="' + (o && o.people ? o.people : 1) + '" value="' + esc(S.sched.crew) + '"></div>' +
+        '<div><label>Hours per person per day</label><input id="e-sch-hpd" type="number" min="1" step="any" value="' + esc(S.sched.hpd) + '"></div></div>' +
+        '<div id="e-sch-out" style="margin-top:8px"></div>' +
+        '<div class="bar" style="margin-top:8px"><label class="show" style="font-size:13px"><input type="checkbox" id="e-sch-on"' + (S.sched.onQuote ? ' checked' : '') + '> Show the time on the quote</label><button class="alt small" id="e-sch-ics">Download calendar file (.ics)</button></div>' +
+        '<p class="muted">Working days only (Monday to Friday). Crew size left blank uses the people count from the Overhead tab. Opening the .ics file adds the job to your calendar as an all-day event.</p>';
+      schedOut();
+    }
+    function schedOut() {
+      var s = schedInfo(calc()), b = $e('sch-out'); if (!b) return;
+      b.innerHTML = !s ? '<span class="muted">Add labor lines to the estimate to get a duration.</span>' :
+        round2(s.hrs) + ' labor hrs / (' + s.crew + (s.crew === 1 ? ' person' : ' people') + ' x ' + s.hpd + ' hrs a day) = <b>' + s.days + ' working day' + (s.days === 1 ? '' : 's') + '</b>' + (s.start ? '<br>' + esc(fmtD(s.start)) + ' to <b>' + esc(fmtD(s.end)) + '</b>' : '');
+    }
+    function icsDownload() {
+      var s = schedInfo(calc());
+      if (!s || !s.start) { banner('Pick a start date first.', 'err'); return; }
+      function p2(n) { return (n < 10 ? '0' : '') + n; }
+      function ymd(d) { return d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()); }
+      function ie(t) { return String(t || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n'); }
+      var endEx = new Date(s.end); endEx.setDate(endEx.getDate() + 1);
+      var now = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+      var title = 'FLFC: ' + ([S.job.customer, S.job.job].filter(Boolean).join(' - ') || 'Job');
+      var txt = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//FLFC Office//Estimator//EN', 'BEGIN:VEVENT', 'UID:' + uid() + '@flfc-office', 'DTSTAMP:' + now, 'DTSTART;VALUE=DATE:' + ymd(s.start), 'DTEND;VALUE=DATE:' + ymd(endEx),
+        'SUMMARY:' + ie(title), 'DESCRIPTION:' + ie('About ' + s.days + ' working days, ' + round2(s.hrs) + ' labor hours, crew of ' + s.crew + '.'), 'LOCATION:' + ie(S.job.address), 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+      var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([txt], { type: 'text/calendar' })); a.download = 'flfc-job.ics';
+      document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+      toast('Calendar file downloaded.');
+    }
+    // ----- photo notes: pictures stay on this device (IndexedDB); the captions travel with the saved estimate -----
+    var idbP = null, MAX_PHOTOS = 12;
+    function idb() {
+      if (!idbP) idbP = new Promise(function (res, rej) {
+        try { var r = indexedDB.open('flfc_office_photos', 1); r.onupgradeneeded = function () { r.result.createObjectStore('p'); }; r.onsuccess = function () { res(r.result); }; r.onerror = function () { rej(r.error); }; } catch (e) { rej(e); }
+      });
+      return idbP;
+    }
+    function idbOp(mode, fn) { return idb().then(function (db) { return new Promise(function (res, rej) { var t = db.transaction('p', mode), rq = fn(t.objectStore('p')); t.oncomplete = function () { res(rq && rq.result); }; t.onerror = function () { rej(t.error); }; }); }); }
+    function loadPhotos() { return Promise.all(S.photos.map(function (p) { return photoCache[p.id] ? 0 : idbOp('readonly', function (s) { return s.get(p.id); }).then(function (v) { if (v) photoCache[p.id] = v; }).catch(function () {}); })); }
+    function shrinkImage(file) {
+      return new Promise(function (res, rej) {
+        var img = new Image(), url = URL.createObjectURL(file);
+        img.onload = function () {
+          var m = 900, k = Math.min(1, m / Math.max(img.naturalWidth, img.naturalHeight)), cv = document.createElement('canvas');
+          cv.width = Math.round(img.naturalWidth * k); cv.height = Math.round(img.naturalHeight * k);
+          cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height); URL.revokeObjectURL(url); res(cv.toDataURL('image/jpeg', 0.72));
+        };
+        img.onerror = function () { URL.revokeObjectURL(url); rej(new Error('bad image')); };
+        img.src = url;
+      });
+    }
+    function renderPhotos() {
+      var b = $e('ph'); if (!b) return;
+      loadPhotos().then(function () {
+        b.innerHTML = '<input type="file" id="e-ph-file" accept="image/*" multiple style="max-width:300px">' +
+          (S.photos.length ? '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:10px">' + S.photos.map(function (p, i) {
+            return '<div data-pi="' + i + '" style="width:200px">' + (photoCache[p.id] ? '<img src="' + photoCache[p.id] + '" alt="" style="width:100%;border-radius:6px">' : '<div class="muted" style="padding:20px 6px;background:var(--tan);border-radius:6px;text-align:center">Photo is on another device</div>') +
+              '<input data-ph="cap" placeholder="Caption, e.g. Rotted sill" value="' + esc(p.cap || '') + '" style="margin-top:4px"><label class="show" style="font-size:12px"><input type="checkbox" data-ph="show"' + (p.show !== false ? ' checked' : '') + '> On the quote</label> <button class="small danger" data-phrm>Remove</button></div>';
+          }).join('') + '</div>' : '<div class="muted" style="margin-top:8px">No photos yet.</div>') +
+          '<p class="muted">Up to ' + MAX_PHOTOS + ' photos. They are shrunk and kept on this device only, so open the estimate on the same computer or phone to print them. Captions are saved with the estimate.</p>';
+      });
+    }
+    // ----- follow-up on sent quotes -----
+    function followDue(f) { var d = new Date(f.sent + 'T12:00:00'); d.setDate(d.getDate() + num(P.fu || 7)); return d; }
+    function fuOverdue(f) { return f.status === 'open' && followDue(f).getTime() <= Date.now(); }
+    function updateFuBadge() {
+      var n = P.follow.filter(fuOverdue).length, b = document.querySelector('#e-sub [data-sub=results]');
+      if (b) b.textContent = 'Results' + (n ? ' (' + n + ')' : '');
+    }
+    function renderFollow() {
+      var b = $e('fu'); if (!b) return;
+      var f = P.follow.filter(function (x) { return x.id === S.fid; })[0];
+      b.innerHTML = (f ? 'Marked sent <b>' + esc(f.sent) + '</b> for <b>' + fm(f.total) + '</b>. Status: <b>' + esc(f.status) + '</b>. Follow up on <b>' + esc(fmtD(followDue(f))) + '</b>.' : '<span class="muted">Not marked as sent yet.</span>') +
+        '<div class="bar" style="margin-top:8px"><button class="go small" id="e-fu-mark">' + (f ? 'Update: sent again today at the current total' : 'Mark quote as sent today') + '</button></div>' +
+        '<p class="muted">Sent quotes are tracked in the Results tab. After ' + esc(P.fu) + ' days with no answer, the tab shows a count and a follow-up message ready to copy.</p>';
+    }
+    function markSent() {
+      if (!S.items.length) { banner('Build the estimate first.', 'err'); return; }
+      if (!S.fid) S.fid = uid();
+      var c = calc(), e = { id: S.fid, name: [S.job.customer, S.job.job].filter(Boolean).join(' - ') || 'Untitled', customer: S.job.customer || '', job: S.job.job || '', total: c.total, sent: todayStr(), status: 'open', vu: validUntil() };
+      P.follow = [e].concat(P.follow.filter(function (x) { return x.id !== e.id; })).slice(0, 120);
+      S.sent = e.sent; saveDraft(); savePrices(); renderFollow(); renderFuList(); toast('Marked as sent. It shows up in the Results tab.');
+    }
+    function followText(f) {
+      var first = (f.customer || '').split(/\s+/)[0] || 'there';
+      return 'Hi ' + first + ', this is Fourth Light Farm Construction following up on the estimate for ' + (f.job || 'your project') + ' (' + fm(f.total) + '). It is good through ' + f.vu + '. Do you have any questions, or would you like to pick a start date? Call or text (603) 265-1380.';
+    }
+    function renderFuList() {
+      var box = $e('fulist'); updateFuBadge(); if (!box) return;
+      var open = P.follow.filter(function (f) { return f.status === 'open'; }).sort(function (a, b) { return a.sent < b.sent ? -1 : 1; });
+      var won = P.follow.filter(function (f) { return f.status === 'won'; }), lost = P.follow.filter(function (f) { return f.status === 'lost'; });
+      var dec = won.length + lost.length, wonTotal = won.reduce(function (t, f) { return t + num(f.total); }, 0);
+      box.innerHTML = (open.length ? '<div class="tblwrap"><table><tbody>' + open.map(function (f) {
+        var days = Math.max(0, Math.floor((Date.now() - new Date(f.sent + 'T12:00:00').getTime()) / 864e5)), od = fuOverdue(f);
+        return '<tr data-fid="' + f.id + '"><td>' + esc(f.name) + '<br><span class="muted">sent ' + esc(f.sent) + ', waiting ' + days + ' day' + (days === 1 ? '' : 's') + '</span> ' + (od ? '<span class="pill warn">follow up now</span>' : '') + '</td><td class="num">' + fm(f.total) + '</td>' +
+          '<td style="white-space:nowrap"><button class="alt small" data-fa="copy">Copy follow-up</button> <button class="go small" data-fa="won">Won</button> <button class="alt small" data-fa="lost">Lost</button> <button class="small danger" data-fa="rm" title="Remove">&times;</button></td></tr>';
+      }).join('') + '</tbody></table></div>' : '<div class="muted">No quotes waiting. After you send one, click <i>Mark quote as sent today</i> on the Quote tab.</div>') +
+        (dec ? '<div style="margin-top:10px"><b>Won ' + won.length + ' of ' + dec + ' decided quotes (' + Math.round(won.length / dec * 100) + '%)</b>, ' + fm(wonTotal) + ' won. <button class="alt small" data-fa="clear">Clear decided quotes</button></div>' : '');
     }
     function renderQuote() { $e('quote').innerHTML = quoteHtml(); $e('handoff').textContent = handoffText(); $e('hdr').textContent = fm(calc().total); }
 
@@ -3200,7 +3456,9 @@
           var pa = asmById(pr.dataset.pid), ci = e.target.closest('tr[data-ci]'); if (!pa || !ci) return;
           var c = pa.comps[+ci.dataset.ci]; if (!c) return;
           var k = e.target.dataset.c; c[k] = (k === 'cover' || k === 'price') ? num(e.target.value) : e.target.value;
-          unStarter(pa); savePrices();
+          if (k === 'price') { c.chk = todayStr(); var di = ci.querySelector('[data-c=chk]'); if (di) { di.value = c.chk; di.style.borderColor = ''; di.title = ''; } }
+          if (k === 'chk') e.target.style.borderColor = isStale(c.chk) ? 'var(--red)' : '';
+          unStarter(pa); savePrices(); renderStale();
           var note = pr.querySelector('[data-eff]'); if (note) note.textContent = fm(effMat(pa));
           return;
         }
@@ -3383,6 +3641,83 @@
       });
       // quote
       $e('q-detail').addEventListener('change', renderQuote);
+      // options
+      $e('opt').addEventListener('input', function (e) {
+        var t = e.target;
+        if (t.id === 'e-opt-base') { S.baseName = t.value; saveDraft(); qRefresh(); return; }
+        var tr = t.closest('tr[data-ti]'); if (!tr || !t.dataset.o) return;
+        var tier = S.tiers[+tr.dataset.ti]; if (!tier) return;
+        tier[t.dataset.o] = ['matPct', 'laborPct', 'addOn'].indexOf(t.dataset.o) >= 0 ? num(t.value) : t.value;
+        saveDraft(); qRefresh();
+      });
+      $e('opt').addEventListener('change', function (e) {
+        if (e.target.id === 'e-opt-pick') { S.pick = parseInt(e.target.value, 10) || 0; saveDraft(); renderOptions(); qRefresh(); renderPay(); renderSched(); return; }
+        if (e.target.id === 'e-opt-base' || e.target.dataset.o === 'name') renderOptions();
+      });
+      $e('opt').addEventListener('click', function (e) {
+        if (e.target.closest('[data-oadd]')) {
+          var n = S.tiers.length; S.tiers.push({ name: ['Better', 'Best', 'Premium', 'Deluxe'][n] || 'Option ' + (n + 2), matPct: 25 * (n + 1), laborPct: 0, addOn: 0, desc: '' });
+          saveDraft(); renderOptions(); qRefresh();
+        } else if (e.target.closest('[data-orm]')) {
+          var i = +e.target.closest('tr[data-ti]').dataset.ti; S.tiers.splice(i, 1);
+          if (S.pick === i + 1) S.pick = 0; else if (S.pick > i + 1) S.pick--;
+          saveDraft(); renderOptions(); qRefresh();
+        }
+      });
+      // payment schedule
+      $e('pay').addEventListener('input', function (e) {
+        var t = e.target, tr = t.closest('tr[data-pi]'); if (!tr || !t.dataset.p) return;
+        var rows = payEditRows(), r = rows[+tr.dataset.pi]; if (!r) return;
+        r[t.dataset.p] = t.dataset.p === 'pct' ? num(t.value) : t.value; saveDraft(); payFill(); renderQuote();
+      });
+      $e('pay').addEventListener('change', function (e) { if (e.target.id === 'e-pay-on') { S.pay.on = e.target.checked; saveDraft(); renderQuote(); } });
+      $e('pay').addEventListener('click', function (e) {
+        if (e.target.closest('[data-padd]')) { payEditRows().push({ n: 'Milestone', pct: 0 }); }
+        else if (e.target.closest('[data-prm]')) { var rows = payEditRows(); if (rows.length > 1) rows.splice(+e.target.closest('tr[data-pi]').dataset.pi, 1); }
+        else if (e.target.closest('[data-pdef]')) { P.pay = cloneJ(payRowsOf()); savePrices(); toast('Saved as your default payment schedule.'); return; }
+        else if (e.target.closest('[data-puse]')) { S.pay.rows = null; }
+        else return;
+        saveDraft(); renderPay(); renderQuote();
+      });
+      // time on site
+      $e('sch').addEventListener('input', function (e) {
+        var t = e.target; if (t.id === 'e-sch-start') S.sched.start = t.value; else if (t.id === 'e-sch-crew') S.sched.crew = t.value; else if (t.id === 'e-sch-hpd') S.sched.hpd = t.value; else return;
+        saveDraft(); schedOut(); renderQuote();
+      });
+      $e('sch').addEventListener('change', function (e) { if (e.target.id === 'e-sch-on') { S.sched.onQuote = e.target.checked; saveDraft(); renderQuote(); } });
+      $e('sch').addEventListener('click', function (e) { if (e.target.closest('#e-sch-ics')) icsDownload(); });
+      // photos
+      $e('ph').addEventListener('change', function (e) {
+        if (e.target.id === 'e-ph-file') {
+          var files = [].slice.call(e.target.files || []), room = MAX_PHOTOS - S.photos.length;
+          if (files.length > room) banner('Only ' + MAX_PHOTOS + ' photos per estimate. Adding the first ' + Math.max(room, 0) + '.', 'err');
+          files.slice(0, Math.max(room, 0)).reduce(function (chain, f) {
+            return chain.then(function () { return shrinkImage(f).then(function (data) { var id = uid(); return idbOp('readwrite', function (s) { return s.put(data, id); }).then(function () { photoCache[id] = data; S.photos.push({ id: id, cap: '', show: true }); }); }); }).catch(function () { banner('Could not add one of the photos.', 'err'); });
+          }, Promise.resolve()).then(function () { saveDraft(); renderPhotos(); renderQuote(); });
+        } else if (e.target.dataset.ph === 'show') { var p = S.photos[+e.target.closest('[data-pi]').dataset.pi]; if (p) { p.show = e.target.checked; saveDraft(); renderQuote(); } }
+      });
+      $e('ph').addEventListener('input', function (e) {
+        if (e.target.dataset.ph !== 'cap') return;
+        var p = S.photos[+e.target.closest('[data-pi]').dataset.pi]; if (p) { p.cap = e.target.value; saveDraft(); renderQuote(); }
+      });
+      $e('ph').addEventListener('click', function (e) {
+        if (!e.target.closest('[data-phrm]')) return;
+        var i = +e.target.closest('[data-pi]').dataset.pi, p = S.photos[i]; if (!p) return;
+        S.photos.splice(i, 1); delete photoCache[p.id]; idbOp('readwrite', function (s) { return s.delete(p.id); }).catch(function () {});
+        saveDraft(); renderPhotos(); renderQuote();
+      });
+      // follow-up
+      $e('fu').addEventListener('click', function (e) { if (e.target.closest('#e-fu-mark')) markSent(); });
+      $e('fulist').addEventListener('click', function (e) {
+        var b = e.target.closest('[data-fa]'); if (!b) return;
+        var act = b.dataset.fa, tr = b.closest('tr[data-fid]'), f = tr ? P.follow.filter(function (x) { return x.id === tr.dataset.fid; })[0] : null;
+        if (act === 'clear') { if (!confirm('Remove all won and lost quotes from the list? The win rate starts over.')) return; P.follow = P.follow.filter(function (x) { return x.status === 'open'; }); }
+        else if (!f) return;
+        else if (act === 'copy') { copyText(followText(f), b); return; }
+        else if (act === 'won' || act === 'lost') f.status = act;
+        else if (act === 'rm') { if (!confirm('Remove "' + f.name + '" from the list?')) return; P.follow = P.follow.filter(function (x) { return x !== f; }); }
+        savePrices(); renderFuList();
+      });
       $e('q-print').addEventListener('click', function () {
         var pr = $('printRoot'); pr.innerHTML = '<div class="estQuote" style="font-family:Segoe UI,Arial,sans-serif;color:#111;padding:10px">' + quoteHtml() + '</div>';
         document.body.classList.add('estprint');
@@ -3404,7 +3739,10 @@
         var c = calc();
         copy('Fourth Light Farm Construction, LLC - Estimate ' + quoteNo() + '\n' + (S.job.customer || '') + (S.job.job ? ' - ' + S.job.job : '') + '\n\n' +
           quoteLines().map(function (r) { return r[0] + (r[1] ? ' (' + r[1] + ')' : '') + ': ' + fm(r[2]); }).join('\n') +
-          '\n\nTotal (check / ACH): ' + fm(c.total) + '\nCash: ' + fm(c.cash) + '\nCard: ' + fm(c.card) + '\nValid until ' + validUntil(), this);
+          '\n\nTotal (check / ACH): ' + fm(c.total) + '\nCash: ' + fm(c.cash) + '\nCard: ' + fm(c.card) +
+          (S.tiers.length && !S.pick ? '\n\nOptions:\n' + [[S.baseName || 'Good', '', calc(0)]].concat(S.tiers.map(function (t, i) { return [t.name, t.desc, calc(i + 1)]; })).map(function (r) { return r[0] + (r[1] ? ' (' + r[1] + ')' : '') + ': ' + fm(r[2].total) + ' check/ACH, ' + fm(r[2].cash) + ' cash, ' + fm(r[2].card) + ' card'; }).join('\n') : '') +
+          (S.pay.on ? '\n\nPayment schedule:\n' + payRowsOf().map(function (r, i) { return r.n + ' (' + r.pct + '%): ' + fm(payAmounts(c.total)[i]); }).join('\n') : '') +
+          '\nValid until ' + validUntil(), this);
       });
       $e('h-cust').addEventListener('change', function () { hmsg(''); loadHandoffJobs(this.value); });
       resetPostBtn = twoTap($e('h-post'), 'Add to portal job', 'Tap again: the customer will see these', function () { postToPortal(); });
@@ -3478,7 +3816,7 @@
           ['Check the line items', 'Change any quantity or price. A labor line with a blank price uses your labor rate. The <i>+ Labor, + Material, + Dump, + Travel, + Other</i> buttons add your own lines.'],
           ['Read the totals', 'You get the price for check or ACH, cash (discounted) and card (with the fee).'],
           ['Check the profit meter', 'Under the totals, the <i>Profit meter</i> compares the price to what the job really costs you (labor at your cost per hour from the Overhead tab, materials at cost, dump and travel). Green means you hit your profit target. If it is red it tells you the price that would.'],
-          ['Take the Material list shopping', 'The <i>Material list</i> below the totals shows only what to buy, in whole boxes, bags and sheets. Use <i>Copy list</i> or <i>Print list</i>.'],
+          ['Take the Material list shopping', 'The <i>Material list</i> below the totals shows only what to buy, in whole boxes, bags and sheets. The same part used by two work types is added up and rounded once, so you buy fewer bags. Use <i>Copy list</i> or <i>Print list</i>.'],
           ['Save it', 'Type a name next to <i>Save this estimate as</i> and click Save. Open it again from the list below.']
         ],
         ex: '<b>Master bath floor, 60 SF</b> (starter numbers).<br>Work type <i>Tile - floor</i>, quantity 60, waste 10%.<br>Labor: 60 SF x 0.20 hr = 12 hrs x $150 = <b>$1,800</b>.<br>Material: 66 SF needed, so <b>7 boxes of tile</b> (10 SF each), <b>2 bags of thinset</b> and <b>1 bag of grout</b>, plus a little other material.<br>Add + Dump $150 and + Travel $150, then read the Profit meter.',
@@ -3506,6 +3844,7 @@
           ['Framing lumber', 'Type what you pay per linear foot for each board size, how many labor hours it takes per piece, and the hardware %.'],
           ['Work types', 'Each row is a kind of work. Set its unit (SF, LF, EA or HR), the labor hours for one unit and the <i>Other material</i> cost for loose items per unit.'],
           ['Parts', 'Click <i>Parts</i> on a row to list what you buy for it: the name, how many units one pack covers, what it comes in (box, bag, sheet) and the price per pack. The estimate rounds each part up to whole packs.'],
+          ['Price check', 'The <i>Price check</i> card counts part and lumber prices that were never checked or are over 60 days old. In Parts, the <i>Home Depot</i> and <i>Lowe\'s</i> links open a search in a new tab. Type the price you see and the check date fills in itself. Prices are not pulled in automatically.'],
           ['Job bundles', 'At the bottom, <i>+ New bundle</i> makes a set of work types with starting quantities. Name it, click <i>+ Add work type</i> for each piece and type its usual quantity.'],
           ['Add or reset', '<i>+ Add work type</i> adds a row. <i>Reset to starter list</i> puts my placeholder rows and bundles back, so use it carefully.']
         ],
@@ -3519,10 +3858,15 @@
           ['Look at the quote', 'The preview is what the customer sees. Tick <i>Show every line item</i> to list each line. Leave it off to show only Labor, Materials, Dump and Travel totals.'],
           ['Give it to them', '<i>Print / save as PDF</i> makes a clean page. <i>Copy quote text</i> copies it so you can paste it into an email or text.'],
           ['Put it in their portal', 'Under <i>Send to a customer\'s portal job</i> choose the Customer and the Job, then click <i>Add to portal job</i>. It asks you to tap again, because the customer sees it right away.'],
-          ['Carry on to the invoice', 'Click <i>Open this customer</i> to jump to their card. The invoice total there fills in from these lines.']
+          ['Carry on to the invoice', 'Click <i>Open this customer</i> to jump to their card. The invoice total there fills in from these lines.'],
+          ['Offer Good / Better / Best', 'Under <i>Quote options</i> click <i>+ Add option</i>. Name it, set how much more the materials or labor cost (Material %, Labor %) or a flat Add-on $, and say what is different. The quote then shows every option side by side. When the customer picks one, choose it under <i>Customer chose</i> and all the totals follow it.'],
+          ['Show a payment schedule', 'Tick <i>Show a payment schedule</i>. Change the milestones and percentages (30 / 40 / 30 to start). The amounts are worked out from the total. <i>Save as my default</i> keeps your version for every new estimate.'],
+          ['Time on site', 'Type a start date and the crew size. It works out working days from the labor hours. Tick <i>Show the time on the quote</i> to print it, or download the .ics file to put the job on your calendar.'],
+          ['Photo notes', 'Choose pictures, type a caption (like <i>Rotted sill, needs replacing</i>) and they print on the quote. They stay on this device.'],
+          ['Track the follow-up', 'After you send the quote click <i>Mark quote as sent today</i>. The Results tab then tells you when to follow up.']
         ],
         ex: 'Master bath, total $2,628. Choose <i>Jane Smith</i> and <i>Master bath</i>, click Add to portal job and tap again. The labor, material, dump and travel lines now show on her portal. Click Open this customer, then create the invoice.',
-        watch: ['Nothing is invoiced or emailed from this page.', 'If you post the same estimate to the same job twice, it warns you first.', 'Check that no line is marked <i>starter</i> before a customer sees it.']
+        watch: ['The out-of-state surcharge and any option change are hidden inside the Labor and Materials amounts on the quote.', 'Photos are kept on the device you added them on. Captions travel with the saved estimate, the pictures do not.', 'Nothing is invoiced or emailed from this page.', 'If you post the same estimate to the same job twice, it warns you first.', 'Check that no line is marked <i>starter</i> before a customer sees it.']
       },
       'est-results': {
         t: 'Estimator: Results',
@@ -3532,7 +3876,8 @@
           ['Type the actuals', 'For each work type, type the hours it really took and the material you really spent. Dump, travel and other go on the last row. Leave a box blank if you did not track it.'],
           ['Read the profit', 'The summary shows the estimated profit and the actual profit, using your cost per hour from the Overhead tab.'],
           ['Record the job', 'Click <i>Record as a finished job</i>. It saves the numbers with the estimate and adds the job to the history.'],
-          ['Let the Price list learn', 'Under <i>What finished jobs say</i>, each work type shows your Price list number next to the average of your real jobs. Click <i>Use</i> to put the real number into the Price list.']
+          ['Chase sent quotes', 'The top card lists quotes you marked as sent. After the follow-up days (7 to start) it says <i>follow up now</i>, and <i>Copy follow-up</i> gives you a message to paste into a text or email. Mark each one <i>Won</i> or <i>Lost</i> and it keeps your win rate. The number on the Results button is how many are overdue.'],
+          ['Let the Price list learn','Under <i>What finished jobs say</i>, each work type shows your Price list number next to the average of your real jobs. Click <i>Use</i> to put the real number into the Price list.']
         ],
         ex: '<b>Master bath floor, 60 SF.</b> Estimate said 12 hrs. It took 15, so hours are off by +25%. After a few jobs <i>Tile - floor</i> averages 0.25 hrs per SF against 0.20 in the Price list. Click <i>Use</i> and the next estimate carries 0.25.',
         watch: ['Only lines made by Quick add or a bundle can be learned from. Lines you typed by hand are compared but not learned.', 'One job is a small sample. Wait for two or three before you trust an average.', 'Recording the same job again replaces it, it does not count twice.']
