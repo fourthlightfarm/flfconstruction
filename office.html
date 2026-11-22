@@ -15,6 +15,8 @@
     /* Help window: sits to the right of the page; becomes a slide-over on narrower screens */
     #help { flex:0 0 390px; width:390px; position:sticky; top:12px; max-height:calc(100vh - 24px); overflow:auto; background:#fff; border:1px solid var(--line); border-radius:10px; box-shadow:0 4px 16px rgba(0,0,0,.08); }
     @media (max-width:1180px) { #help { position:fixed; top:0; right:0; bottom:0; width:min(420px,100%); max-height:none; border-radius:0; z-index:60; box-shadow:-6px 0 24px rgba(0,0,0,.28); } }
+    /* Mid-size screens: the page slides left to make room instead of the help covering it. Phones keep the slide-over. */
+    @media (max-width:1180px) and (min-width:700px) { #help { width:min(380px,44vw); } body.helpOpen main { padding-right:calc(min(380px,44vw) + 16px); } }
     #help .hp-head { position:sticky; top:0; background:var(--brown); color:#fff; padding:10px 12px; display:flex; align-items:center; gap:8px; z-index:2; }
     #help .hp-head b { flex:1; font-size:15px; }
     #help .hp-head button { background:#fff; color:var(--brown); border:0; }
@@ -3583,7 +3585,7 @@
         '<p class="muted" style="margin-top:14px">This window follows you when you change tabs. Use the small buttons at the top to read help for any other tab.</p></div>';
       el.scrollTop = 0;
     }
-    function setOpen(v) { isOpen = v; el.hidden = !v; btn.setAttribute('aria-expanded', v ? 'true' : 'false'); btn.className = v ? 'go' : 'alt'; if (v) render(); }
+    function setOpen(v) { isOpen = v; el.hidden = !v; document.body.classList.toggle('helpOpen', v); btn.setAttribute('aria-expanded', v ? 'true' : 'false'); btn.className = v ? 'go' : 'alt'; if (v) render(); }
     btn.addEventListener('click', function () { forced = null; setOpen(!isOpen); });
     el.addEventListener('click', function (e) {
       if (e.target.closest('#hp-x')) { setOpen(false); return; }
