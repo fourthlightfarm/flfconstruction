@@ -412,6 +412,12 @@
         row.appendChild(el('b', m.customer + ' - ' + m.type + ' - ' + m.date));
         if (m.about) row.appendChild(el('div', m.about, 'muted'));
         row.appendChild(el('p', m.text));
+        if (m.type === 'Change request') {
+          var co = el('button', 'Start a change order', 'small go'); co.style.marginBottom = '8px';
+          co.addEventListener('click', function () { if (window.estStartChange) window.estStartChange({ customerId: m.customer, text: m.text, about: m.about }); });
+          row.appendChild(co);
+          row.appendChild(el('div', 'Price it in the Estimator, send it to their portal job, then reply here.', 'muted'));
+        }
         var ta = el('textarea'); ta.placeholder = 'Your reply'; ta.maxLength = 1000; row.appendChild(ta);
         var b = el('button', 'Send reply', 'small go'); b.style.marginTop = '6px';
         b.addEventListener('click', function () {
@@ -555,6 +561,29 @@
     }
     jobSel.addEventListener('change', function () { syncLine(); autoTotal(); }); syncLine();
     body.appendChild(g);
+    // One-tap amounts from the estimate you last sent to this customer's portal (total and payment schedule milestones).
+    (function estimateChips() {
+      var h = null; try { h = JSON.parse(localStorage.getItem('flfc_office_invoice_hint_v1')); } catch (e) {}
+      if (!h || h.cid !== c.id || !(h.total > 0)) return;
+      var box = el('div'); box.style.marginTop = '8px';
+      box.appendChild(el('div', 'From the ' + (h.co ? 'change order' : 'estimate') + ' you sent to the portal on ' + h.when + '. Tap to fill the amount:', 'muted'));
+      var row = el('div', null, 'bar'); row.style.marginTop = '4px';
+      function chip(label, amt, suffix) {
+        var b = el('button', label + ' ' + money(amt), 'alt small'); b.type = 'button';
+        b.addEventListener('click', function () {
+          if (typeof made !== 'undefined' && made) return;
+          if ([].some.call(jobSel.options, function (o) { return o.value === h.jid; })) jobSel.value = h.jid;
+          var so = jobSel.options[jobSel.selectedIndex], base = h.job || (so ? so.text.replace(/ \(completed\)$/, '') : 'Services');
+          total.value = Number(amt).toFixed(2);
+          line.value = base + (suffix ? ' - ' + suffix : ''); line.dataset.edited = '1';
+          [total, line].forEach(function (x) { x.dispatchEvent(new Event('change')); });   // not the job box: its handler would reset the total
+        });
+        row.appendChild(b);
+      }
+      (h.rows || []).forEach(function (r) { chip(r.n, r.amt, r.n); });
+      chip(h.co ? 'Change order total' : 'Estimate total', h.total, '');
+      box.appendChild(row); body.appendChild(box);
+    })();
     var mk = el('div', null, 'bar'); mk.style.marginTop = '12px';
     var create = el('button', 'Create Stripe invoice', 'go');
     var voidBtn = el('button', 'Void and start over', 'alt'); voidBtn.hidden = true;
@@ -2279,9 +2308,9 @@
       });
     }
     function cloneJ(o) { return JSON.parse(JSON.stringify(o)); }
-    function defaultPrices() { var asm = STARTER.map(function (a) { return cloneJ(a); }); return { labor: 150, markup: 0, cont: 0, dump: 150, travel: 150, cash: 10, card: 3, valid: 30, oos: 20, fu: 7, pay: [{ n: 'Deposit to start', pct: 30 }, { n: 'Rough-in complete', pct: 40 }, { n: 'Final completion', pct: 30 }], follow: [], frame: defaultFrame(), asm: asm, bundles: defaultBundles(asm), hist: [] }; }
+    function defaultPrices() { var asm = STARTER.map(function (a) { return cloneJ(a); }); return { labor: 150, markup: 0, cont: 0, dump: 150, travel: 150, cash: 10, card: 3, valid: 30, oos: 20, fu: 7, submk: 15, pay: [{ n: 'Deposit to start', pct: 30 }, { n: 'Rough-in complete', pct: 40 }, { n: 'Final completion', pct: 30 }], follow: [], frame: defaultFrame(), asm: asm, bundles: defaultBundles(asm), hist: [] }; }
     function freshActual() { return { g: {}, extra: '', note: '', done: false }; }
-    function freshState() { return { estId: '', job: { customer: '', job: '', address: '', date: todayStr(), notes: '', state: 'NH' }, items: [], takeoff: { file: '', cal: {}, meas: [] }, posted: null, actual: freshActual(), fid: '', baseName: 'Good', tiers: [], pick: 0, pay: { on: false, rows: null }, sched: { start: '', crew: '', hpd: 8, onQuote: false }, sent: '', photos: [] }; }
+    function freshState() { return { estId: '', job: { customer: '', job: '', address: '', date: todayStr(), notes: '', state: 'NH' }, items: [], takeoff: { file: '', cal: {}, meas: [] }, posted: null, actual: freshActual(), kind: 'estimate', co: { ref: '', approved: '' }, fid: '', baseName: 'Good', tiers: [], pick: 0, pay: { on: false, rows: null }, sched: { start: '', crew: '', hpd: 8, onQuote: false }, sent: '', photos: [] }; }
     function fixState(s) {
       if (!s || !Array.isArray(s.items)) return freshState();
       if (!s.job) s.job = freshState().job;
@@ -2290,7 +2319,7 @@
       if (!s.actual || typeof s.actual !== 'object') s.actual = freshActual();
       if (!s.actual.g) s.actual.g = {};
       var f = freshState();
-      ['fid', 'baseName', 'tiers', 'pick', 'pay', 'sched', 'sent', 'photos'].forEach(function (k) { if (s[k] == null) s[k] = f[k]; });
+      ['kind', 'co', 'fid', 'baseName', 'tiers', 'pick', 'pay', 'sched', 'sent', 'photos'].forEach(function (k) { if (s[k] == null) s[k] = f[k]; });
       if (!Array.isArray(s.tiers)) s.tiers = []; if (!Array.isArray(s.photos)) s.photos = [];
       if (s.pick > s.tiers.length) s.pick = 0;
       return s;
@@ -2390,6 +2419,8 @@
           '<div><label>Address</label><input id="e-j-address"></div>' +
           '<div><label>Date</label><input id="e-j-date" type="date"></div></div>' +
           '<label>Job state</label><div class="bar" id="e-j-state" style="margin:0">' + ['NH', 'MA', 'VT', 'ME'].map(function (s) { return '<button class="alt small" data-state="' + s + '" style="min-width:56px">' + s + '</button>'; }).join('') + '<span class="muted" id="e-j-statenote"></span></div>' +
+          '<label>This document is a</label><div class="bar" id="e-j-kind" style="margin:0"><button class="alt small" data-kind="estimate">Estimate</button><button class="alt small" data-kind="change">Change order</button><button class="alt small" id="e-newco" title="Start a change order for this customer and job">+ New change order from this</button></div>' +
+          '<div class="grid2" id="e-co-row" hidden><div><label>What this changes</label><input id="e-co-ref" placeholder="e.g. Master bath tile, add a niche"></div><div><label>Customer approved on</label><input id="e-co-appr" type="date"></div></div>' +
           '<label>Scope notes (shown on the quote)</label><textarea id="e-j-notes" style="min-height:50px" placeholder="What is included, what is not"></textarea></section>' +
         '<section class="card"><h2>Quick add from a work type</h2><div class="rowf">' +
           '<div style="flex:2 1 220px"><label>Work type</label><select id="e-qa-asm"></select></div>' +
@@ -2433,6 +2464,14 @@
           '<div id="e-fr-out" style="margin-top:12px"></div>' +
           '<div class="bar" style="margin-top:10px"><button class="go" id="e-fr-add">Add framing to estimate</button></div>' +
           '<p class="muted">Counts members at the spacing you pick (length x 12 / OC, plus one), adds corners, openings, plates and headers, then rounds up to whole boards. Spacing is a spec you choose (or read from the plan notes). In Plan takeoff, use Frame it on a measured length to fill the length in here.</p></section>' +
+        '<section class="card" id="e-sb-card"><h2>Subs, permits and outside costs</h2><div class="rowf">' +
+          '<div style="flex:1.2 1 170px"><label>What</label><select id="e-sb-kind"></select></div>' +
+          '<div style="flex:2 1 220px"><label>Description (the customer sees this)</label><input id="e-sb-desc" placeholder="e.g. Licensed plumber, rough-in and fixtures"></div>' +
+          '<div><label>Your cost ($)</label><input id="e-sb-cost" type="number" min="0" step="any"></div>' +
+          '<div><label>Markup %</label><input id="e-sb-mk" type="number" min="0" step="any"></div>' +
+          '<div class="fix"><button class="go" id="e-sb-add">Add to estimate</button></div></div>' +
+          '<div class="muted" id="e-sb-note" style="margin-top:4px"></div>' +
+          '<p class="muted">The line shows the customer your cost plus the markup as one price. Your real cost stays on this screen and feeds the profit meter. Permits start at 0% markup because they are a pass-through. Change the default markup in the Price list.</p></section>' +
         '<section class="card"><h2>Line items</h2><div class="tblwrap"><table id="e-items"><thead><tr><th style="width:105px">Type</th><th>Description</th><th style="width:80px" class="num">Qty</th><th style="width:60px">Unit</th><th style="width:95px" class="num">Unit price</th><th style="width:100px" class="num">Total</th><th style="width:36px"></th></tr></thead><tbody></tbody></table></div>' +
           '<div class="bar" style="margin-top:10px"><button class="alt small" data-add="Labor">+ Labor</button><button class="alt small" data-add="Material">+ Material</button><button class="alt small" data-add="Dump">+ Dump</button><button class="alt small" data-add="Travel">+ Travel</button><button class="alt small" data-add="Other">+ Other</button></div>' +
           '<p class="muted">A labor line with a blank unit price uses the labor rate from the Price list.</p></section>' +
@@ -2475,7 +2514,8 @@
           '<div><label>Card fee %</label><input id="e-r-card" type="number" min="0" step="any"></div>' +
           '<div><label>Quote valid for (days)</label><input id="e-r-valid" type="number" min="1" step="1"></div>' +
           '<div><label>Out-of-state surcharge % (MA, VT, ME)</label><input id="e-r-oos" type="number" min="0" step="any"></div>' +
-          '<div><label>Follow up on a sent quote after (days)</label><input id="e-r-fu" type="number" min="1" step="1"></div></div>' +
+          '<div><label>Follow up on a sent quote after (days)</label><input id="e-r-fu" type="number" min="1" step="1"></div>' +
+          '<div><label>Default markup on subs and outside costs %</label><input id="e-r-submk" type="number" min="0" step="any"></div></div>' +
           '<p class="muted">Labor, dump and travel start at $150 from recent invoices. Markup and contingency start at 0. The out-of-state surcharge is added to the total of jobs outside NH and is hidden inside Labor on the customer\'s quote.</p></section>' +
         '<section class="card"><h2>Price check</h2><div id="e-stale"></div><p class="muted">The links open a search at the store in a new tab. Prices are not pulled in automatically, because store sites do not allow it. Type the price you see and the date fills in.</p></section>' +
         '<section class="card" id="e-fp-card"><h2>Framing lumber</h2><div class="banner" id="e-fp-banner" style="background:#fbf1e3;color:#7a4a10" hidden>These are <b>starter</b> placeholder prices, not the real FLFC costs. Edit any number and this mark goes away.</div>' +
@@ -2497,6 +2537,15 @@
         '<section class="card"><h2>Job bundles</h2><div id="e-bundles"></div>' +
           '<div class="bar" style="margin-top:10px"><button class="alt" id="e-bu-new">+ New bundle</button></div>' +
           '<p class="muted">A bundle is a set of work types you often sell together, with starting quantities. On the Estimate tab you pick it, adjust the quantities and add it all at once.</p></section>' +
+        '<section class="card"><h2>Raise or lower all prices</h2><div class="rowf">' +
+          '<div><label>Change by %</label><input id="e-pb-pct" type="number" step="any" placeholder="e.g. 5"></div>' +
+          '<div style="flex:3 1 300px"><label>What to change</label><div class="bar" style="margin:0"><label class="show" style="font-size:13px"><input type="checkbox" id="e-pb-labor" checked> Labor rate</label><label class="show" style="font-size:13px"><input type="checkbox" id="e-pb-parts" checked> Part prices</label><label class="show" style="font-size:13px"><input type="checkbox" id="e-pb-mat" checked> Other material $</label><label class="show" style="font-size:13px"><input type="checkbox" id="e-pb-lum" checked> Lumber prices</label></div></div></div>' +
+          '<div class="bar" style="margin-top:10px"><button class="alt" id="e-pb-prev">Preview</button><button class="go" id="e-pb-apply">Apply</button><button class="alt" id="e-pb-undo">Undo last change</button></div>' +
+          '<div id="e-pb-out" style="margin-top:8px"></div>' +
+          '<p class="muted">Use a negative number to lower prices. Hours, markup, contingency and the surcharge are never touched. Prices are not marked as checked, so confirm the big ones at the store.</p></section>' +
+        '<section class="card"><h2>Backup and restore</h2><div class="bar"><button class="go" id="e-bk-dl">Download a backup</button><input type="file" id="e-bk-file" accept=".json,application/json" style="max-width:260px" title="Restore from a backup file"></div>' +
+          '<div id="e-bk-msg" class="muted" style="margin-top:8px"></div>' +
+          '<p class="muted">The backup file holds your price list (with bundles, sent-quote list and finished-job history) and every saved estimate. Photos are not included because they live on the device. To restore, choose a backup file above. It replaces your price list and re-saves the estimates in the file. Estimates that are not in the file are kept.</p></section>' +
       '</div>' +
       '<div id="e-sec-results" hidden>' +
         '<section class="card"><h2>Quotes waiting on an answer</h2><div id="e-fulist"></div></section>' +
@@ -2682,6 +2731,27 @@
     }
     // Material cost of one work unit: the "other" $ plus each part's price spread over what a pack covers.
     function effMat(a) { return num(a.mat) + (a.comps || []).reduce(function (t, c) { return t + (num(c.cover) > 0 ? num(c.price) / num(c.cover) : 0); }, 0); }
+    // ----- subs, permits and outside costs -----
+    var SUBKINDS = [['Plumber (sub)', 'Plumbing subcontractor', 1], ['Electrician (sub)', 'Electrical subcontractor', 1], ['HVAC (sub)', 'HVAC subcontractor', 1], ['Dumpster rental', 'Dumpster rental', 1], ['Permit fee', 'Building permit fee', 0], ['Engineer / stamped plans', 'Engineered, stamped plans', 1], ['Equipment rental', 'Equipment rental', 1], ['Other', '', 1]];
+    function subInit() {
+      var sel = $e('sb-kind'); if (!sel || sel.options.length) return;
+      sel.innerHTML = SUBKINDS.map(function (k, i) { return '<option value="' + i + '">' + esc(k[0]) + '</option>'; }).join('');
+      subKind();
+    }
+    function subKind() {
+      var k = SUBKINDS[+$e('sb-kind').value] || SUBKINDS[0];
+      $e('sb-desc').placeholder = k[1] || 'What it is';
+      $e('sb-mk').value = k[2] ? P.submk : 0;
+    }
+    function subAdd() {
+      var k = SUBKINDS[+$e('sb-kind').value] || SUBKINDS[0], cost = num($e('sb-cost').value), mk = num($e('sb-mk').value);
+      if (!(cost > 0)) { banner('Type your cost first.', 'err'); return; }
+      var desc = $e('sb-desc').value.trim() || k[1];
+      if (!desc) { banner('Describe what it is.', 'err'); return; }
+      S.items.push({ id: uid(), cat: 'Other', desc: desc, qty: 1, unit: 'ls', price: round2(cost * (1 + mk / 100)), cost: cost, mk: mk });
+      saveDraft(); $e('sb-cost').value = ''; $e('sb-desc').value = ''; renderEstimate();
+      toast('Added ' + desc + ': ' + fm(cost * (1 + mk / 100)) + ' (your cost ' + fm(cost) + ').');
+    }
     function addBlank(cat) {
       var it = { id: uid(), cat: cat, desc: '', qty: 1, unit: cat === 'Labor' ? 'hr' : 'ea', price: '' };
       if (cat === 'Dump') { it.desc = 'Dump fee'; it.price = P.dump; }
@@ -2695,7 +2765,7 @@
         var ph = it.cat === 'Labor' ? ' placeholder="' + esc(P.labor) + '"' : '';
         return '<tr data-id="' + it.id + '">' +
           '<td><select data-f="cat">' + CATS.map(function (c) { return '<option' + (c === it.cat ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select></td>' +
-          '<td><input data-f="desc" value="' + esc(it.desc) + '">' + (it.starter ? '<span class="pill warn">starter values</span>' : '') + '</td>' +
+          '<td><input data-f="desc" value="' + esc(it.desc) + '">' + (it.starter ? '<span class="pill warn">starter values</span>' : '') + (it.cost != null ? '<span class="pill" title="Internal. The customer sees only the price.">your cost ' + fm(num(it.qty) * num(it.cost)) + ' +' + round2(num(it.mk)) + '%</span>' : '') + '</td>' +
           '<td><input data-f="qty" type="number" step="any" class="num" value="' + esc(it.qty) + '"></td>' +
           '<td><input data-f="unit" value="' + esc(it.unit) + '"></td>' +
           '<td><input data-f="price" type="number" step="any" class="num" value="' + esc(it.price) + '"' + ph + '></td>' +
@@ -2724,7 +2794,7 @@
     function costBasis() { var o = window.__ohResult ? window.__ohResult() : null; return o && o.ok ? o : null; }
     function costSplit() {
       var s = { hrs: 0, mat: 0, other: 0 };
-      S.items.forEach(function (it) { if (it.cat === 'Labor') s.hrs += num(it.qty); else if (it.cat !== 'Material') s.other += lineTotal(it); });
+      S.items.forEach(function (it) { if (it.cat === 'Labor') s.hrs += num(it.qty); else if (it.cat !== 'Material') s.other += it.cost != null ? num(it.qty) * num(it.cost) : lineTotal(it); });
       matMerged().forEach(function (m) { s.mat += m.cost; });   // what you would actually buy
       return s;
     }
@@ -2799,9 +2869,12 @@
     function renderEstimate() {
       Object.keys(JOBF).forEach(function (id) { $e(id).value = S.job[JOBF[id]] || ''; });
       updateFuBadge();
+      $$('#e-j-kind [data-kind]').forEach(function (b) { b.className = b.dataset.kind === S.kind ? 'go small' : 'alt small'; });
+      $e('co-row').hidden = S.kind !== 'change'; $e('co-ref').value = S.co.ref || ''; $e('co-appr').value = S.co.approved || '';
+      $$('#e-sec-estimate > section:first-of-type h2').forEach(function (h) { h.textContent = S.kind === 'change' ? 'Job (change order)' : 'Job'; });
       $$('#e-j-state [data-state]').forEach(function (b) { b.className = b.dataset.state === S.job.state ? 'go small' : 'alt small'; });
       $e('j-statenote').textContent = S.job.state !== 'NH' ? '+' + P.oos + '% added to the total, hidden inside Labor for the customer.' : '';
-      renderAsmSelect(); renderBundleSelect(); renderItems(); renderTotals(); renderSaved(); frInit(); frRender();
+      subInit(); renderAsmSelect(); renderBundleSelect(); renderItems(); renderTotals(); renderSaved(); frInit(); frRender();
       var n = S.items.filter(function (i) { return i.starter; }).length, b = $e('starter');
       b.hidden = !n;
       b.textContent = n ? n + ' line' + (n === 1 ? ' uses' : 's use') + ' starter placeholder prices. Check them in the Price list, then edit the line (or delete and re-add it) before sending a quote.' : '';
@@ -2872,7 +2945,7 @@
     }
 
     // ----- prices -----
-    var RATES = { 'r-labor': 'labor', 'r-markup': 'markup', 'r-cont': 'cont', 'r-dump': 'dump', 'r-travel': 'travel', 'r-cash': 'cash', 'r-card': 'card', 'r-valid': 'valid', 'r-oos': 'oos', 'r-fu': 'fu' };
+    var RATES = { 'r-labor': 'labor', 'r-markup': 'markup', 'r-cont': 'cont', 'r-dump': 'dump', 'r-travel': 'travel', 'r-cash': 'cash', 'r-card': 'card', 'r-valid': 'valid', 'r-oos': 'oos', 'r-fu': 'fu', 'r-submk': 'submk' };
     function fillPrices() {
       Object.keys(RATES).forEach(function (id) { $e(id).value = P[RATES[id]]; });
       fillFrame();
@@ -2897,9 +2970,85 @@
           }).join('') + '</tbody></table><button class="alt small" data-cadd style="margin-top:6px">+ Add part</button></td></tr>';
         return row;
       }).join('');
-      fillBundles(); renderStale();
+      fillBundles(); renderStale(); pbRefresh();
     }
     var openParts = {};
+    // ----- raise or lower all prices by a percent (with preview and undo) -----
+    function pbPlan() {
+      var pct = parseFloat($e('pb-pct').value);
+      if (!isFinite(pct) || pct === 0) return null;
+      var f = 1 + pct / 100, p = { pct: pct, f: f, labor: $e('pb-labor').checked, parts: $e('pb-parts').checked, mat: $e('pb-mat').checked, lum: $e('pb-lum').checked, nParts: 0, nMat: 0, nLum: 0 };
+      P.asm.forEach(function (a) { if (p.parts) p.nParts += (a.comps || []).length; if (p.mat && num(a.mat) > 0) p.nMat++; });
+      if (p.lum) p.nLum = FR_SIZES.length;
+      return p;
+    }
+    function pbText(p) {
+      var r = function (v) { return round2(v * p.f); }, bits = [];
+      if (p.labor) bits.push('Labor rate ' + fm(num(P.labor)) + ' to <b>' + fm(r(num(P.labor))) + '</b>');
+      if (p.parts) bits.push(p.nParts + ' part price' + (p.nParts === 1 ? '' : 's'));
+      if (p.mat) bits.push(p.nMat + ' other-material price' + (p.nMat === 1 ? '' : 's'));
+      if (p.lum) bits.push(p.nLum + ' lumber prices (2x4 ' + fm(num(P.frame.price['2x4'])) + ' to <b>' + fm(r(num(P.frame.price['2x4']))) + '</b> per LF)');
+      return (p.pct > 0 ? 'Raise' : 'Lower') + ' by ' + Math.abs(p.pct) + '%: ' + (bits.join(', ') || 'nothing is ticked') + '.';
+    }
+    function pbRefresh() { var o = $e('pb-out'); if (o) o.innerHTML = P.undo ? '<span class="muted">Last change: ' + (P.undo.pct > 0 ? 'raised' : 'lowered') + ' ' + Math.abs(P.undo.pct) + '% on ' + esc(P.undo.when) + '. <i>Undo last change</i> puts every price back, including any you edited since.</span>' : ''; $e('pb-undo').disabled = !P.undo; }
+    function pbApply() {
+      var p = pbPlan(); if (!p) { banner('Type a percent first (5 raises prices 5%, -5 lowers them).', 'err'); return; }
+      if (!(p.labor || p.parts || p.mat || p.lum)) { banner('Tick something to change.', 'err'); return; }
+      if (!confirm(pbText(p).replace(/<\/?b>/g, '') + ' Apply it? You can undo it afterward.')) return;
+      var u = { when: todayStr(), pct: p.pct, labor: P.labor, mat: {}, comps: {}, frame: cloneJ(P.frame.price) }, r = function (v) { return round2(num(v) * p.f); };
+      P.asm.forEach(function (a) { u.mat[a.id] = a.mat; u.comps[a.id] = (a.comps || []).map(function (c) { return c.price; }); });
+      if (p.labor) P.labor = r(P.labor);
+      P.asm.forEach(function (a) {
+        if (p.mat) a.mat = r(a.mat);
+        if (p.parts) (a.comps || []).forEach(function (c) { c.price = r(c.price); });
+      });
+      if (p.lum) FR_SIZES.forEach(function (s) { P.frame.price[s] = r(P.frame.price[s]); });
+      P.undo = u; savePrices(); fillPrices(); pbRefresh(); toast('Prices changed by ' + p.pct + '%.');
+    }
+    function pbUndo() {
+      var u = P.undo; if (!u) return;
+      if (!confirm('Put every price back to how it was before the ' + u.pct + '% change on ' + u.when + '? Edits you made to prices since then are lost.')) return;
+      P.labor = u.labor;
+      P.asm.forEach(function (a) { if (u.mat[a.id] != null) a.mat = u.mat[a.id]; (a.comps || []).forEach(function (c, i) { if (u.comps[a.id] && u.comps[a.id][i] != null) c.price = u.comps[a.id][i]; }); });
+      FR_SIZES.forEach(function (s) { if (u.frame && u.frame[s] != null) P.frame.price[s] = u.frame[s]; });
+      P.undo = null; savePrices(); fillPrices(); pbRefresh(); toast('Prices put back.');
+    }
+    // ----- backup / restore -----
+    function bkSay(t, bad) { var m = $e('bk-msg'); if (m) { m.textContent = t || ''; m.style.color = bad ? 'var(--red)' : ''; } }
+    function backupDownload() {
+      var out = { app: 'flfc-estimator-backup', v: 1, when: new Date().toISOString(), prices: P, draft: S, estimates: [] }, failed = 0;
+      bkSay('Collecting your saved estimates…');
+      var chain = Promise.resolve();
+      saved.forEach(function (s) {
+        if (!srv) { out.estimates.push({ id: s.id, name: s.name, updated: s.updated || '', state: s.state }); return; }
+        chain = chain.then(function () { return call('estimatorLoad', { estimateId: s.id }).then(function (d) { if (d && d.ok) { try { out.estimates.push({ id: s.id, name: d.name || s.name, updated: s.updated || '', state: JSON.parse(d.data) }); return; } catch (e) {} } failed++; }); });
+      });
+      chain.then(function () {
+        var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(out)], { type: 'application/json' })); a.download = 'flfc-estimator-backup-' + todayStr() + '.json';
+        document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+        bkSay('Backup downloaded: price list and ' + out.estimates.length + ' saved estimate' + (out.estimates.length === 1 ? '' : 's') + (failed ? '. ' + failed + ' could not be read and are not in the file' : '') + '.', !!failed);
+      });
+    }
+    function backupRestore(file) {
+      var rd = new FileReader();
+      rd.onload = function () {
+        var b; try { b = JSON.parse(rd.result); } catch (e) {}
+        if (!b || b.app !== 'flfc-estimator-backup' || !b.prices || !Array.isArray(b.estimates)) { bkSay('That is not an estimator backup file.', true); return; }
+        if (!confirm('Restore the backup made ' + String(b.when || '').slice(0, 10) + '?\n\nThis replaces your price list with the one in the file and saves its ' + b.estimates.length + ' estimate(s) (same names are overwritten). Estimates that are not in the file are kept.')) return;
+        P = fixPrices(b.prices); savePrices(); fillPrices();
+        var n = 0, chain = Promise.resolve();
+        b.estimates.forEach(function (e) {
+          if (!e || !e.state) return;
+          if (srv) chain = chain.then(function () { return call('estimatorSave', { estimateId: e.id || '', name: e.name || 'Restored', data: JSON.stringify(e.state) }).then(function (d) { if (d && d.ok) n++; }); });
+          else { saved = saved.filter(function (s) { return s.id !== e.id; }); saved.unshift({ id: e.id || uid(), name: e.name || 'Restored', updated: e.updated || '', state: e.state }); n++; }
+        });
+        chain.then(function () {
+          if (srv) return call('estimatorGet').then(function (g) { if (g && g.ok) saved = g.estimates; });
+          lsSet(K_SAVED, saved);
+        }).then(function () { renderSaved(); renderEstimate(); bkSay('Restored the price list and ' + n + ' estimate' + (n === 1 ? '' : 's') + '.'); });
+      };
+      rd.readAsText(file);
+    }
     // ----- price freshness: a part or lumber price not checked for 60 days gets flagged -----
     var STALE_DAYS = 60;
     function todayStr() { var d = new Date(), p = function (n) { return (n < 10 ? '0' : '') + n; }; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }   // local date, not UTC
@@ -3178,20 +3327,26 @@
       }).join('') + '</div></div>';
     }
     function longDate(s) { var d = s ? new Date(s + 'T12:00:00') : new Date(); return isNaN(d) ? '' : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }); }
-    function quoteNo() { return 'EST-' + ((S.job.date || '').replace(/-/g, '') || 'DRAFT'); }
+    function isCO() { return S.kind === 'change'; }
+    function coHtml() {
+      if (!isCO()) return '';
+      return S.co.approved ? '<p style="margin-top:14px"><b>Approved by the customer on ' + esc(longDate(S.co.approved)) + '.</b></p>' :
+        '<p style="margin-top:20px">Customer approval: ________________________ &nbsp; Date: ______________</p><p class="muted">Work on this change starts once it is approved. The total is added to the job.</p>';
+    }
+    function quoteNo() { return (isCO() ? 'CO-' : 'EST-') +((S.job.date || '').replace(/-/g, '') || 'DRAFT'); }
     function validUntil() { var d = S.job.date ? new Date(S.job.date + 'T12:00:00') : new Date(); d.setDate(d.getDate() + num(P.valid)); return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }); }
     function quoteHtml() {
       var c = calc(), L = quoteLines();
       return '<h2 style="margin:0">Fourth Light Farm Construction, LLC</h2><div class="muted">(603) 265-1380 &middot; fourthlightfarm@gmail.com &middot; flfconstruction.com</div>' +
-        '<div style="display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;margin:14px 0"><div><b>Estimate for</b><br>' + esc(S.job.customer || '(customer)') + '<br>' + esc(S.job.address || '') + '</div>' +
+        '<div style="display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;margin:14px 0"><div><b>' + (isCO() ? 'Change order for' : 'Estimate for') + '</b><br>' + esc(S.job.customer || '(customer)') + '<br>' + esc(S.job.address || '') + '</div>' +
         '<div><b>' + quoteNo() + '</b><br>' + esc(longDate(S.job.date)) + '<br>Valid until ' + esc(validUntil()) + '</div></div>' +
-        (S.job.job ? '<p><b>Project:</b> ' + esc(S.job.job) + '</p>' : '') + (S.job.notes ? '<p style="white-space:pre-wrap">' + esc(S.job.notes) + '</p>' : '') +
+        (S.job.job ? '<p><b>Project:</b> ' + esc(S.job.job) + '</p>' : '') + (isCO() && S.co.ref ? '<p><b>This changes:</b> ' + esc(S.co.ref) + '</p>' : '') + (S.job.notes ? '<p style="white-space:pre-wrap">' + esc(S.job.notes) + '</p>' : '') +
         '<table><thead><tr><th>Description</th><th>Qty</th><th class="r">Amount</th></tr></thead><tbody>' +
         (L.length ? L.map(function (r) { return '<tr><td>' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td><td class="r">' + fm(r[2]) + '</td></tr>'; }).join('') : '<tr><td colspan="3" class="muted">No line items yet.</td></tr>') +
         '<tr class="total"><td colspan="2">Total (check / ACH)' + (S.tiers.length && S.pick ? ' - ' + esc(pickName()) : '') + '</td><td class="r">' + fm(c.total) + '</td></tr></tbody></table>' +
         optionsHtml() +
         '<p style="margin-top:14px"><b>Payment options</b><br>Check or ACH: ' + fm(c.total) + ' &middot; Cash: ' + fm(c.cash) + ' (' + P.cash + '% off) &middot; Card: ' + fm(c.card) + ' (+' + P.card + '% processing)</p>' +
-        payHtml(c) + schedHtml(c) + photosHtml() +
+        payHtml(c) + schedHtml(c) + photosHtml() + coHtml() +
         '<p class="muted">Financing may be available through our partner, Enhancify. Check your rate at flfconstruction.com/pricing.html. This estimate is based on the scope described above; changes to the scope may change the price.</p>';
     }
     function handoffText() {
@@ -3315,7 +3470,7 @@
     function markSent() {
       if (!S.items.length) { banner('Build the estimate first.', 'err'); return; }
       if (!S.fid) S.fid = uid();
-      var c = calc(), e = { id: S.fid, name: [S.job.customer, S.job.job].filter(Boolean).join(' - ') || 'Untitled', customer: S.job.customer || '', job: S.job.job || '', total: c.total, sent: todayStr(), status: 'open', vu: validUntil() };
+      var c = calc(), e = { id: S.fid, name: (isCO() ? 'Change order: ' : '') + ([S.job.customer, S.job.job].filter(Boolean).join(' - ') || 'Untitled'), customer: S.job.customer || '', job: S.job.job || '', total: c.total, sent: todayStr(), status: 'open', vu: validUntil() };
       P.follow = [e].concat(P.follow.filter(function (x) { return x.id !== e.id; })).slice(0, 120);
       S.sent = e.sent; saveDraft(); savePrices(); renderFollow(); renderFuList(); toast('Marked as sent. It shows up in the Results tab.');
     }
@@ -3340,13 +3495,20 @@
     // ----- hand-off to a portal job -----
     var hoCusts = null, hoJobs = {};
     function hmsg(text, kind) { var b = $e('h-msg'); b.textContent = text || ''; b.className = 'banner ' + (kind === 'ok' ? 'ok' : 'err'); b.hidden = !text; }
+    var hoPref = null;
+    function applyPref() {
+      if (!hoPref || !hoCusts) return;
+      var sel = $e('h-cust'); sel.value = hoPref; if (sel.value === hoPref) loadHandoffJobs(hoPref);
+      hoPref = null;
+    }
     function loadHandoffCustomers() {
-      if (hoCusts) return;
+      if (hoCusts) { applyPref(); return; }
       call('getCustomers').then(function (d) {
         if (!d.ok) { hmsg(d.error || 'Could not load customers.', 'err'); return; }
         hoCusts = d.customers;
         var sel = $e('h-cust'); sel.innerHTML = '<option value="">Choose a customer…</option>';
         d.customers.forEach(function (c) { var o = el('option', c.name + (c.active ? '' : ' (inactive)')); o.value = c.id; sel.appendChild(o); });
+        applyPref();
       });
     }
     function loadHandoffJobs(id) {
@@ -3366,16 +3528,18 @@
       var L = quoteLines().filter(function (r) { return r[2] > 0; });
       if (!L.length) { hmsg('The estimate has no costs to post.', 'err'); return; }
       var btn = $e('h-post'); btn.disabled = true; hmsg('Adding ' + L.length + ' line item' + (L.length === 1 ? '' : 's') + '…', 'ok');
-      var done = 0, label = S.job.job ? S.job.job + ' - ' : '';
+      var done = 0, label = (isCO() ? 'Change order - ' : '') + (S.job.job ? S.job.job + ' - ' : ''), liType = isCO() ? 'Change order' : 'Original';
       (function next() {
         if (done >= L.length) {
           btn.disabled = false;
-          S.posted = { cid: cid, jid: jid, when: new Date().toISOString().slice(0, 10), n: L.length }; saveDraft(); resetPostBtn();
+          S.posted = { cid: cid, jid: jid, when: todayStr(), n: L.length }; saveDraft(); resetPostBtn();
+          var pc = calc();   // remembered so the invoice form on that customer offers the total and each payment milestone
+          lsSet('flfc_office_invoice_hint_v1', { cid: cid, jid: jid, total: pc.total, job: S.job.job || '', co: isCO(), when: todayStr(), rows: S.pay.on ? payRowsOf().map(function (r, i) { return { n: r.n, amt: payAmounts(pc.total)[i] }; }) : [] });
           hmsg('Added ' + L.length + ' line item' + (L.length === 1 ? '' : 's') + ' to the job (' + fm(calc().total) + ' total, check/ACH). Open the customer to invoice from them.', 'ok');
           return;
         }
         var r = L[done];
-        call('addLineItem', { id: cid, jobId: jid, category: r[3], description: label + r[0] + (r[1] && r[1].indexOf('hrs') > 0 ? ' (' + r[1] + ')' : ''), type: 'Original', amount: r[2] }).then(function (d) {
+        call('addLineItem', { id: cid, jobId: jid, category: r[3], description: label + r[0] + (r[1] && r[1].indexOf('hrs') > 0 ? ' (' + r[1] + ')' : ''), type: liType, amount: r[2] }).then(function (d) {
           if (!d.ok) { btn.disabled = false; hmsg((done ? 'Stopped after ' + done + ' of ' + L.length + ' lines. ' : '') + (d.error || 'Could not add the line.'), 'err'); return; }
           done++; next();
         });
@@ -3388,10 +3552,23 @@
       var root = $('estTab');
       $e('sub').addEventListener('click', function (e) { if (e.target.dataset.sub) showSub(e.target.dataset.sub); });
       Object.keys(JOBF).forEach(function (id) { $e(id).addEventListener('input', function (e) { S.job[JOBF[id]] = e.target.value; saveDraft(); }); });
+      $e('j-kind').addEventListener('click', function (e) {
+        var b = e.target.closest('[data-kind]');
+        if (b) { S.kind = b.dataset.kind; saveDraft(); renderEstimate(); return; }
+        if (!e.target.closest('#e-newco')) return;
+        if (S.items.length && !confirm('Start a new change order for ' + (S.job.customer || 'this customer') + '? Save the current document first if you still need it.')) return;
+        var j = S.job, st = freshState();
+        st.kind = 'change'; st.job.customer = j.customer; st.job.address = j.address; st.job.state = j.state; st.job.job = j.job; st.co.ref = j.job || '';
+        S = st; saveDraft(); clearPlan(); $e('save-name').value = ''; renderEstimate(); renderMeas(); toast('New change order. Add the extra work, then send it to the customer\'s portal job.');
+      });
+      $e('co-ref').addEventListener('input', function (e) { S.co.ref = e.target.value; saveDraft(); renderQuote(); });
+      $e('co-appr').addEventListener('input', function (e) { S.co.approved = e.target.value; saveDraft(); renderQuote(); });
       $e('j-state').addEventListener('click', function (e) {
         var b = e.target.closest('[data-state]'); if (!b) return;
         S.job.state = b.dataset.state; saveDraft(); renderEstimate();
       });
+      $e('sb-kind').addEventListener('change', subKind);
+      $e('sb-add').addEventListener('click', subAdd);
       $e('qa-asm').addEventListener('change', renderAsmSelect);
       $e('qa-add').addEventListener('click', function () {
         if (addAssembly($e('qa-asm').value, num($e('qa-qty').value), num($e('qa-waste').value))) { $e('qa-qty').value = ''; renderEstimate(); toast('Added.'); }
@@ -3534,6 +3711,13 @@
         }
         a.starter = false; savePrices(); renderLearn();
       });
+      // price bump + backup
+      function pbShow() { var p = pbPlan(); $e('pb-out').innerHTML = p ? pbText(p) : '<span class="muted">Type a percent to see what would change.</span>'; }
+      $e('pb-prev').addEventListener('click', pbShow);
+      $e('pb-apply').addEventListener('click', pbApply);
+      $e('pb-undo').addEventListener('click', pbUndo);
+      $e('bk-dl').addEventListener('click', backupDownload);
+      $e('bk-file').addEventListener('change', function (e) { var f = e.target.files[0]; if (f) backupRestore(f); e.target.value = ''; });
       // bundles (Estimate tab)
       $e('bu-sel').addEventListener('change', renderBundlePick);
       $e('bu-body').addEventListener('input', function () { /* quantities are read when you click Add */ });
@@ -3737,7 +3921,7 @@
       });
       $e('q-copy').addEventListener('click', function () {
         var c = calc();
-        copy('Fourth Light Farm Construction, LLC - Estimate ' + quoteNo() + '\n' + (S.job.customer || '') + (S.job.job ? ' - ' + S.job.job : '') + '\n\n' +
+        copy('Fourth Light Farm Construction, LLC - ' + (isCO() ? 'Change order ' : 'Estimate ') + quoteNo() + '\n' + (S.job.customer || '') + (S.job.job ? ' - ' + S.job.job : '') + '\n\n' +
           quoteLines().map(function (r) { return r[0] + (r[1] ? ' (' + r[1] + ')' : '') + ': ' + fm(r[2]); }).join('\n') +
           '\n\nTotal (check / ACH): ' + fm(c.total) + '\nCash: ' + fm(c.cash) + '\nCard: ' + fm(c.card) +
           (S.tiers.length && !S.pick ? '\n\nOptions:\n' + [[S.baseName || 'Good', '', calc(0)]].concat(S.tiers.map(function (t, i) { return [t.name, t.desc, calc(i + 1)]; })).map(function (r) { return r[0] + (r[1] ? ' (' + r[1] + ')' : '') + ': ' + fm(r[2].total) + ' check/ACH, ' + fm(r[2].cash) + ' cash, ' + fm(r[2].card) + ' card'; }).join('\n') : '') +
@@ -3772,6 +3956,21 @@
         if (sub === 'quote') renderQuote();
       });
     };
+    // Called from the Messages card when a customer asks for a change on a line item.
+    window.estStartChange = function (o) {
+      if (!S) S = fixState(lsGet(K_DRAFT, null));
+      if (S.items.length && !confirm('The Estimator has line items that are not saved. Starting this change order replaces them. Continue?')) return;
+      var st = freshState(); st.kind = 'change';
+      st.job.notes = 'Customer request: ' + String(o.text || '').slice(0, 600);
+      st.co.ref = String(o.about || '').replace(/^Line item:\s*/, '');
+      S = st; saveDraft(); hoPref = o.customerId || null;
+      showTab('est');
+      if (built) { showSub('estimate'); renderEstimate(); }
+      call('getCustomer', { id: o.customerId }).then(function (d) {
+        if (d && d.ok && d.customer && S === st) { st.job.customer = d.customer.name || ''; st.job.address = d.customer.address || ''; saveDraft(); if (built) renderEstimate(); }
+      });
+      toast('Change order started. Add the extra work and its price, then send it to the portal job.');
+    };
     window.estimatorReset = function () { built = false; srv = null; P = null; S = null; saved = []; hoCusts = null; hoJobs = {}; clearTimeout(priceTimer); $('estTab').innerHTML = ''; clearPlan(); };
   })();
 
@@ -3787,7 +3986,8 @@
           ['Open a customer', 'Pick their name in the drop-down at the top. Their jobs show as rows. Click a job row to open it.'],
           ['Add what the job costs', 'Inside the job, under <i>Line items</i>, type a Category and a Description, pick the type, type the Amount and click <i>Add line item</i>. <i>Original</i> is in the first quote, <i>Change order</i> is something the customer asked to change, <i>Added</i> is anything else.'],
           ['Keep them posted', 'Under <i>Project updates</i> type a short title and details and click <i>Add update</i>. Use <i>Photos and files</i> to add pictures.'],
-          ['Invoice them', 'Open the <i>Send invoice email</i> card. Pick the job. The total fills in from the line items. Click <i>Create Stripe invoice</i>, then <i>Send me a preview</i> to read it, then <i>Send to customer</i>.']
+          ['Invoice them', 'Open the <i>Send invoice email</i> card. Pick the job. The total fills in from the line items. Click <i>Create Stripe invoice</i>, then <i>Send me a preview</i> to read it, then <i>Send to customer</i>. If you just sent an estimate to their portal, tap one of the amount buttons (the total, or a payment milestone like the deposit) to fill the total in one tap.'],
+          ['Answer change requests', 'On a line item in their portal the customer can tap <i>Request a change</i> (change, remove or add to it). It shows up under <i>Messages</i> marked <i>Change request</i>. Click <i>Start a change order</i> to open the Estimator with their request filled in, price it, send it to their portal job, then reply.']
         ],
         ex: '<b>Jane Smith, kitchen backsplash.</b><br>Line items: Labor, Tile install, $1,200 (Original). Material, Tile and thinset, $600 (Original). She then asks for outlet covers: Change order, Outlet covers, $80.<br>The job card shows <b>Costs so far $1,880</b>, and the invoice total fills in as $1,880.',
         watch: ['Each row has a <i>Show</i> box. If it is checked, the customer can see that row in their portal right away.', 'Delete job and Delete customer cannot be undone, so the page asks you to confirm first.', 'Pick a customer first. Nothing here changes until you click a button like Add or Save.']
@@ -3810,6 +4010,8 @@
         steps: [
           ['Fill in the job', 'Customer, job name, address and date. The scope notes show on the quote, so say what is and is not included.'],
           ['Pick the job state', 'Click <i>NH, MA, VT or ME</i>. Anything outside NH adds the out-of-state surcharge (20% to start, change it in the Price list) to the total. The customer never sees it: it is folded into the Labor amount on the quote and in the portal.'],
+          ['Change orders', 'To price extra work mid-job, click <i>Change order</i> next to <i>This document is a</i> (or <i>+ New change order from this</i> to copy the customer and job). Add the extra work, type what it changes, and on the Quote tab it prints with an approval line. Sent to the portal it goes in as a <i>Change order</i> line item.'],
+          ['Subs, permits and outside costs', 'Use the <i>Subs, permits and outside costs</i> card for a plumber, electrician, dumpster or permit. Type your cost and the markup %. The customer sees one price. The profit meter uses your real cost.'],
           ['Quick add a work type', 'Pick a work type (like <i>Tile - floor</i>), type the quantity in its unit, set the waste %, click <i>Add to estimate</i>. It adds a labor line and a material line from the Price list.'],
           ['Add a whole bundle', 'Under <i>Job bundles</i> pick a bundle (like <i>Shower tile package</i>), change any quantity, and click <i>Add whole bundle</i>. Every work type in it goes onto the estimate at once.'],
           ['Frame with the calculator', 'For lumber, use the <i>Framing calculator</i>. Pick what you are framing, type the length, spacing, height and openings, check the pieces it lists, then click <i>Add framing to estimate</i>.'],
@@ -3846,6 +4048,8 @@
           ['Parts', 'Click <i>Parts</i> on a row to list what you buy for it: the name, how many units one pack covers, what it comes in (box, bag, sheet) and the price per pack. The estimate rounds each part up to whole packs.'],
           ['Price check', 'The <i>Price check</i> card counts part and lumber prices that were never checked or are over 60 days old. In Parts, the <i>Home Depot</i> and <i>Lowe\'s</i> links open a search in a new tab. Type the price you see and the check date fills in itself. Prices are not pulled in automatically.'],
           ['Job bundles', 'At the bottom, <i>+ New bundle</i> makes a set of work types with starting quantities. Name it, click <i>+ Add work type</i> for each piece and type its usual quantity.'],
+          ['Raise or lower all prices', 'Type a percent (5 raises prices 5%, -5 lowers them), tick what to change, click <i>Preview</i> to see the effect, then <i>Apply</i>. <i>Undo last change</i> puts everything back.'],
+          ['Back it up', '<i>Download a backup</i> saves the price list and every saved estimate to one file. Choose that file in the box beside it to restore. Do it before big changes and every so often.'],
           ['Add or reset', '<i>+ Add work type</i> adds a row. <i>Reset to starter list</i> puts my placeholder rows and bundles back, so use it carefully.']
         ],
         ex: '<b>Tile - floor.</b> If your tiler sets 5 SF in an hour, labor hours per unit is 1 / 5 = <b>0.2</b>.<br>Parts: floor tile, a box covers 10 SF at $60. Thinset, a 50 lb bag covers 60 SF at $28. For 66 SF it buys 7 boxes and 2 bags.<br>A 2x4 x 8 ft at $0.90 per LF costs 0.90 x 8 = <b>$7.20</b> a board.',

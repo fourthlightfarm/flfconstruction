@@ -173,6 +173,32 @@
     return wrap;
   }
 
+  // On a cost or line item the customer asks for a change instead of raising a flag. Nothing changes until we send a change order with a price.
+  function changeBox(ref, label) {
+    var wrap = el('div');
+    var btn = el('button', 'Request a change', 'small');
+    btn.type = 'button';
+    var box = el('div', null, 'flagbox');
+    box.hidden = true;
+    box.appendChild(el('p', 'Tell us what you would like different. We will review it and send you a change order with the price. Nothing changes until you approve it.', 'muted'));
+    var sel = el('select');
+    ['Change this', 'Remove this', 'Add to this', 'Just a question'].forEach(function (t) { sel.appendChild(el('option', t)); });
+    var ta = el('textarea');
+    ta.maxLength = 900;
+    ta.placeholder = 'What would you like? About: ' + label;
+    var send = el('button', 'Send request', 'full');
+    send.type = 'button';
+    box.appendChild(sel); box.appendChild(ta); box.appendChild(send);
+    btn.addEventListener('click', function () { box.hidden = !box.hidden; });
+    send.addEventListener('click', function () {
+      if (!ta.value.trim()) { banner('Type your request first.', 'err'); return; }
+      if (sel.value === 'Just a question') run({ action: 'message', ref: ref, type: 'Question', text: ta.value.trim() });
+      else run({ action: 'message', ref: ref, type: 'Change request', kind: sel.value, text: ta.value.trim() });
+    });
+    wrap.appendChild(btn); wrap.appendChild(box);
+    return wrap;
+  }
+
   function listInvoices(box, list) {
     if (!list.length) box.appendChild(el('p', 'No invoices yet.', 'muted'));
     list.forEach(function (i) {
@@ -217,7 +243,7 @@
       top.appendChild(left);
       top.appendChild(el('b', money(x.amount)));
       row.appendChild(top);
-      row.appendChild(flagBox(x.ref, x.description));
+      row.appendChild(changeBox(x.ref, x.description));
       box.appendChild(row);
     });
   }
