@@ -22,6 +22,7 @@
     button.full { width:100%; margin-top:12px; }
     button.small { min-height:34px; padding:6px 12px; font-size:13px; background:transparent; color:var(--brown); border:1.5px solid var(--brown); }
     button.pay, a.pay { display:inline-block; background:var(--green); color:#fff; text-decoration:none; font-weight:700; border-radius:8px; padding:8px 14px; font-size:14px; }
+    a.btn { display:inline-block; background:var(--brown); color:#fff; text-decoration:none; font-weight:700; border-radius:10px; padding:12px 16px; }
     button:disabled { opacity:.55; cursor:default; }
     #banner { display:none; margin-top:12px; padding:12px 14px; border-radius:8px; font-weight:600; }
     #banner.ok { display:block; background:#e3f0e1; color:var(--ok); }
@@ -283,6 +284,44 @@
     });
   }
 
+  // The finish list: the customer adds small items to wrap up the job; we check them off. A finished job also gets the review link.
+  var REVIEW_URL = 'https://g.page/r/CbC-aqYIKwh0ECE/review';
+  function finishList(j, done) {
+    var box = el('div');
+    var list = j.punch || [];
+    if (!list.length && done) {
+      var rv = el('div'); rv.appendChild(el('h3', 'Happy with the work?'));
+      rv.appendChild(el('p', 'A short Google review helps a small local business more than you would think. Thank you.', 'muted'));
+      var ra = el('a', 'Leave a review', 'btn'); ra.href = REVIEW_URL; ra.target = '_blank'; ra.rel = 'noopener';
+      rv.appendChild(ra); return rv;
+    }
+    box.appendChild(el('h3', 'Finish list'));
+    if (!list.length) box.appendChild(el('p', 'Nothing here yet. As the job wraps up, add any small touch-ups you notice and we will check them off.', 'muted'));
+    list.forEach(function (p) {
+      var row = el('div', null, 'row');
+      var top = el('div', null, 'top');
+      var left = el('div');
+      left.appendChild(el('b', (p.done ? 'Done: ' : 'To do: ') + p.text));
+      left.appendChild(el('div', (p.by === 'Customer' ? 'You added this' : 'Added by us') + ' - ' + fmtDay(p.date) + (p.done && p.doneOn ? ' - finished ' + fmtDay(p.doneOn) : ''), 'muted'));
+      top.appendChild(left); row.appendChild(top); box.appendChild(row);
+    });
+    if (list.length && list.every(function (p) { return p.done; }) && done) {
+      var a2 = el('a', 'Leave a Google review', 'btn'); a2.href = REVIEW_URL; a2.target = '_blank'; a2.rel = 'noopener'; a2.style.display = 'inline-block'; a2.style.marginTop = '8px';
+      box.appendChild(a2);
+    }
+    if (!done) {
+      var form = el('div', null, 'flagbox');
+      var inp = el('input'); inp.type = 'text'; inp.maxLength = 200; inp.placeholder = 'Add an item to the finish list';
+      var add = el('button', 'Add to finish list', 'full'); add.type = 'button'; add.style.marginTop = '8px';
+      add.addEventListener('click', function () {
+        if (!inp.value.trim()) { banner('Type what needs finishing first.', 'err'); return; }
+        run({ action: 'punchAdd', job: j.id, text: inp.value.trim() });
+      });
+      form.appendChild(inp); form.appendChild(add); box.appendChild(form);
+    }
+    return box;
+  }
+
   function jobCard(j, open) {
     var done = j.status === 'Completed';
     var det = el('details', null, 'job');
@@ -303,6 +342,11 @@
       grid.appendChild(st);
     });
     body.appendChild(grid);
+    var ct = j.contract;
+    if (ct && (ct.approved > 0 || ct.pending > 0)) {
+      var cl = el('p', 'Contract: original ' + money(ct.base) + ' + approved changes ' + money(ct.approved) + ' = ' + money(ct.base + ct.approved) + (ct.pending > 0 ? '. Waiting for your approval: ' + money(ct.pending) + '.' : '.'), 'muted');
+      body.appendChild(cl);
+    }
 
     body.appendChild(el('h3', 'Invoices'));
     var ib = el('div'); listInvoices(ib, j.invoices); body.appendChild(ib);
@@ -310,6 +354,7 @@
     var ub = el('div'); listUpdates(ub, j.updates); body.appendChild(ub);
     body.appendChild(el('h3', 'Costs and line items'));
     var lb = el('div'); listItems(lb, j.items); body.appendChild(lb);
+    body.appendChild(finishList(j, done));
     det.appendChild(body);
     return det;
   }

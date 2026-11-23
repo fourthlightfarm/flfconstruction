@@ -248,6 +248,11 @@
       <div id="msgs"></div>
     </section>
 
+    <section id="waitCard" class="card" hidden>
+      <h2>Change orders waiting on customers <button class="alt small" id="waitRefresh" type="button">Refresh</button></h2>
+      <div id="waitBox"></div>
+    </section>
+
     <div id="custView"></div>
     </div>
     <div id="outTab" hidden></div>
@@ -341,8 +346,39 @@
       $('login').hidden = true; $('app').hidden = false;
       fillCustomers(d, cur ? cur.customer.id : '');
       if ($('cust').value) loadCustomer($('cust').value);
+      loadWaiting();
     });
   }
+
+  // ---------- change orders waiting on customers ----------
+  function loadWaiting() {
+    call('listPendingApprovals').then(function (d) {
+      var card = $('waitCard'), box = $('waitBox');
+      if (!d || !d.ok || !d.items || !d.items.length) { card.hidden = true; return; }
+      card.hidden = false; box.innerHTML = '';
+      d.items.forEach(function (w) {
+        var row = el('div', null, 'msg');
+        row.appendChild(el('b', w.name + ' - ' + w.description + ' - ' + money(w.amount)));
+        row.appendChild(el('div', 'Sent ' + w.days + ' day' + (w.days === 1 ? '' : 's') + ' ago' + (w.job ? ' on ' + w.job : '') + '. ' + (w.viewed ? 'They opened it ' + shortDate(w.viewed) + '.' : 'Not opened yet.') + (w.days >= 3 ? ' Time to follow up.' : ''), 'muted'));
+        var first = (w.name || '').split(/\s+/)[0] || 'there';
+        var text = 'Hi ' + first + ', this is Fourth Light Farm Construction. The change order for ' + w.description + ' (' + money(w.amount) + ') is waiting for your approval. To review and approve it, go to flfconstruction.com, tap Customer Portal, and sign in. Questions? Call or text (603) 265-1380.';
+        var bar = el('div', null, 'bar'); bar.style.marginTop = '6px';
+        var cp = el('button', 'Copy text message', 'alt small'); cp.type = 'button';
+        cp.addEventListener('click', function () { copyText(text, cp); });
+        bar.appendChild(cp);
+        if (w.email) {
+          var em = el('button', 'Open email draft', 'alt small'); em.type = 'button';
+          em.addEventListener('click', function () { location.href = 'mailto:' + encodeURIComponent(w.email) + '?subject=' + encodeURIComponent('Change order waiting for your approval') + '&body=' + encodeURIComponent(text); });
+          bar.appendChild(em);
+        }
+        var go = el('button', 'Open customer', 'alt small'); go.type = 'button';
+        go.addEventListener('click', function () { $('cust').value = w.id; loadCustomer(w.id); window.scrollTo(0, 0); });
+        bar.appendChild(go);
+        row.appendChild(bar); box.appendChild(row);
+      });
+    });
+  }
+  $('waitRefresh').addEventListener('click', loadWaiting);
   $('loginForm').addEventListener('submit', function (e) {
     e.preventDefault();
     var k = $('key').value.trim();
@@ -498,8 +534,12 @@
 
   var totalEls = {};
   function totalsFor(jobId) {
-    var t = { costs: 0, invoiced: 0, paid: 0 };
-    cur.items.forEach(function (i) { if (i.job === jobId && i.visible) t.costs += i.amount; });
+    var t = { costs: 0, invoiced: 0, paid: 0, base: 0, coOk: 0, coWait: 0 };
+    cur.items.forEach(function (i) {
+      if (i.job !== jobId || !i.visible) return;
+      t.costs += i.amount;
+      if (/change/i.test(i.type || '')) { if (i.approved) t.coOk += i.amount; else t.coWait += i.amount; } else t.base += i.amount;
+    });
     cur.invoices.forEach(function (i) { if (i.job === jobId && i.visible) { t.invoiced += i.amount; if (i.status === 'Paid') t.paid += i.amount; } });
     t.due = t.invoiced - t.paid;
     return t;
@@ -509,6 +549,7 @@
     var t = totalsFor(jobId);
     e.costs.textContent = money(r2(t.costs)); e.inv.textContent = money(r2(t.invoiced)); e.paid.textContent = money(r2(t.paid)); e.due.textContent = money(r2(t.due));
     if (e.head) e.head.textContent = 'Due ' + money(r2(t.due));
+    if (e.contract) e.contract.textContent = (t.coOk || t.coWait) ? 'Contract: original ' + money(r2(t.base)) + ' + approved change orders ' + money(r2(t.coOk)) + ' = ' + money(r2(t.base + t.coOk)) + (t.coWait ? '. Waiting for approval: ' + money(r2(t.coWait)) + '.' : '.') : '';
   }
 
   // Emails the customer their portal login (optional), the invoice and the Stripe pay link.
@@ -566,19 +607,25 @@
       var h = null; try { h = JSON.parse(localStorage.getItem('flfc_office_invoice_hint_v1')); } catch (e) {}
       if (!h || h.cid !== c.id || !(h.total > 0)) return;
       var box = el('div'); box.style.marginTop = '8px';
-      box.appendChild(el('div', 'From the ' + (h.co ? 'change order' : 'estimate') + ' you sent to the portal on ' + h.when + '. Tap to fill the amount:', 'muted'));
+      box.appendChild(el('div', 'From the ' + (h.co ? 'change order' : 'estimate') + ' you sent to the portal on ' + h.when + '. Tap an amount to fill it in, or Draft in Stripe to fill it in and create the invoice (not emailed):', 'muted'));
       var row = el('div', null, 'bar'); row.style.marginTop = '4px';
+      function fillFrom(amt, suffix) {
+        if (typeof made !== 'undefined' && made) return false;
+        if ([].some.call(jobSel.options, function (o) { return o.value === h.jid; })) jobSel.value = h.jid;
+        var so = jobSel.options[jobSel.selectedIndex], base = h.job || (so ? so.text.replace(/ \(completed\)$/, '') : 'Services');
+        total.value = Number(amt).toFixed(2);
+        line.value = base + (suffix ? ' - ' + suffix : ''); line.dataset.edited = '1';
+        [total, line].forEach(function (x) { x.dispatchEvent(new Event('change')); });   // not the job box: its handler would reset the total
+        return true;
+      }
       function chip(label, amt, suffix) {
+        var pair = el('span'); pair.style.whiteSpace = 'nowrap';
         var b = el('button', label + ' ' + money(amt), 'alt small'); b.type = 'button';
-        b.addEventListener('click', function () {
-          if (typeof made !== 'undefined' && made) return;
-          if ([].some.call(jobSel.options, function (o) { return o.value === h.jid; })) jobSel.value = h.jid;
-          var so = jobSel.options[jobSel.selectedIndex], base = h.job || (so ? so.text.replace(/ \(completed\)$/, '') : 'Services');
-          total.value = Number(amt).toFixed(2);
-          line.value = base + (suffix ? ' - ' + suffix : ''); line.dataset.edited = '1';
-          [total, line].forEach(function (x) { x.dispatchEvent(new Event('change')); });   // not the job box: its handler would reset the total
-        });
-        row.appendChild(b);
+        b.addEventListener('click', function () { fillFrom(amt, suffix); });
+        var dr = el('button', 'Draft in Stripe', 'go small'); dr.type = 'button'; dr.style.marginLeft = '2px';
+        dr.title = 'Fills this amount in and creates the Stripe invoice. It is not emailed.';
+        dr.addEventListener('click', function () { if (fillFrom(amt, suffix)) create.click(); });
+        pair.appendChild(b); pair.appendChild(dr); row.appendChild(pair);
       }
       (h.rows || []).forEach(function (r) { chip(r.n, r.amt, r.n); });
       chip(h.co ? 'Change order total' : 'Estimate total', h.total, '');
@@ -1074,6 +1121,7 @@
     });
     te.head = dueHead; totalEls[j.id] = te;
     body.appendChild(stats);
+    var cline = el('div', null, 'muted'); cline.style.cssText = 'margin:2px 0 6px;font-weight:bold'; te.contract = cline; body.appendChild(cline);
 
     // line items
     body.appendChild(el('h3', 'Line items'));
@@ -1087,7 +1135,7 @@
       body.appendChild(r);
       if (/change/i.test(i.type || '')) {
         var ap = i.approved;
-        var note = el('div', ap ? 'Approved by ' + ap.by + (ap.on ? ' on ' + shortDate(ap.on) : '') : (i.visible ? 'Waiting for the customer to approve this change order in their portal.' : 'Hidden from the customer, so they cannot approve it yet.'), 'muted');
+        var note = el('div', ap ? 'Approved by ' + ap.by + (ap.on ? ' on ' + shortDate(ap.on) : '') : (i.visible ? (i.viewed ? 'The customer opened it ' + shortDate(i.viewed.on) + '. ' : 'The customer has not opened it yet. ') + 'Waiting for them to approve this change order in their portal.' : 'Hidden from the customer, so they cannot approve it yet.'), 'muted');
         note.style.cssText = 'margin:-2px 0 8px;font-size:13px;' + (ap ? 'color:#2e6b34;font-weight:bold' : '');
         body.appendChild(note);
       }
@@ -1103,6 +1151,40 @@
     });
     [lc, ld, lt, la, lbtn].forEach(function (x) { al.appendChild(x); });
     body.appendChild(al);
+
+    // finish list (punch list): the customer can add items in their portal; you check them off here
+    var punch = (cur.punch || []).filter(function (p) { return p.job === j.id; });
+    var openP = punch.filter(function (p) { return !p.done; }).length;
+    body.appendChild(el('h3', 'Finish list' + (punch.length ? ' (' + openP + ' to do of ' + punch.length + ')' : '')));
+    if (!punch.length) body.appendChild(el('p', 'Nothing yet. The customer can add items in their portal, or add one yourself below.', 'muted'));
+    punch.forEach(function (p) {
+      var pr = el('div', null, 'line'); pr.style.alignItems = 'center';
+      var pl = el('label', null, 'show'); pl.style.flex = '1 1 auto';
+      var pcb = el('input'); pcb.type = 'checkbox'; pcb.checked = p.done;
+      pl.appendChild(pcb);
+      var ptx = el('span', ' ' + p.text); if (p.done) ptx.style.textDecoration = 'line-through'; pl.appendChild(ptx);
+      pl.appendChild(el('span', ' - ' + (p.by === 'Customer' ? 'customer' : 'you') + ' ' + shortDate(p.date) + (p.done && p.doneOn ? ', done ' + shortDate(p.doneOn) : ''), 'muted'));
+      pcb.addEventListener('change', function () {
+        pcb.disabled = true;
+        call('setPunch', { id: cur.customer.id, row: p.row, done: pcb.checked }).then(function (d) {
+          if (!d.ok) { pcb.disabled = false; pcb.checked = !pcb.checked; banner(d.error, 'err'); return; }
+          openJobs[j.id] = true; reload();
+        });
+      });
+      var pdel = el('button', '×', 'small danger'); pdel.title = 'Remove from the finish list';
+      pdel.addEventListener('click', function () {
+        call('deletePunch', { id: cur.customer.id, row: p.row }).then(function (d) { if (!d.ok) { banner(d.error, 'err'); return; } openJobs[j.id] = true; reload(); });
+      });
+      pr.appendChild(pl); pr.appendChild(pdel); body.appendChild(pr);
+    });
+    var pa = el('div', null, 'line li');
+    var pin = el('input'); pin.placeholder = 'Add a finish-list item'; pin.maxLength = 200;
+    var pbtn = el('button', 'Add to finish list', 'go small');
+    pbtn.addEventListener('click', function () {
+      if (!pin.value.trim()) { banner('Type the item first.', 'err'); return; }
+      call('addPunch', { id: cur.customer.id, jobId: j.id, text: pin.value.trim() }).then(function (d) { if (!d.ok) { banner(d.error, 'err'); return; } openJobs[j.id] = true; reload(); });
+    });
+    pa.appendChild(pin); pa.appendChild(pbtn); body.appendChild(pa);
 
     // invoices
     body.appendChild(el('h3', 'Invoices'));
@@ -3066,7 +3148,22 @@
       return n;
     }
     function renderStale() {
-      var n = staleCount(), html = n ? '<span class="pill warn">' + n + ' price' + (n === 1 ? '' : 's') + ' to check</span> <span class="muted">These were never checked or are over ' + STALE_DAYS + ' days old. Use the Home Depot and Lowe\'s links in Parts, then type the real price. The date fills in itself.</span>' : '<span class="muted">All part and lumber prices were checked in the last ' + STALE_DAYS + ' days.</span>';
+      var n = staleCount(), html = n ? '<span class="pill warn">' + n + ' price' + (n === 1 ? '' : 's') + ' to check</span> <span class="muted">These were never checked or are over ' + STALE_DAYS + ' days old. Open the store link, type the real price in Parts (the date fills in itself), or tap <i>Price is still right</i> if it has not changed.</span>' : '<span class="muted">All part and lumber prices were checked in the last ' + STALE_DAYS + ' days.</span>';
+      if (n) {
+        var shown = 0, rows = '';
+        P.asm.forEach(function (a) {
+          (a.comps || []).forEach(function (c, i) {
+            if (!isStale(c.chk)) return;
+            if (++shown > 12) return;
+            var q = encodeURIComponent(c.n || '');
+            rows += '<div data-sk="' + esc(a.id) + '|' + i + '" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 0;border-top:1px solid var(--line,#ddd)"><span style="flex:1 1 220px"><b>' + esc(c.n || 'Part') + '</b> <span class="muted">for ' + esc(a.name) + ', ' + fm(c.price) + ', ' + (c.chk ? 'checked ' + esc(c.chk) : 'never checked') + '</span></span>' +
+              '<a href="https://www.homedepot.com/s/' + q + '" target="_blank" rel="noopener">Home Depot</a> <a href="https://www.lowes.com/search?searchTerm=' + q + '" target="_blank" rel="noopener">Lowe\'s</a> <button class="alt small" data-keep>Price is still right</button></div>';
+          });
+        });
+        if (isStale(P.frame.chk)) { shown++; rows += '<div data-sk="frame" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 0;border-top:1px solid var(--line,#ddd)"><span style="flex:1 1 220px"><b>Framing lumber prices</b> <span class="muted">' + (P.frame.chk ? 'checked ' + esc(P.frame.chk) : 'never checked') + '</span></span><button class="alt small" data-keep>Prices are still right</button></div>'; }
+        if (shown > 12) rows += '<div class="muted" style="padding-top:4px">and ' + (shown - 12) + ' more. Fix these, then the rest show up.</div>';
+        html += '<div style="margin-top:8px">' + rows + '</div>';
+      }
       var b = $e('stale'); if (b) b.innerHTML = html;
     }
     function fillBundles() {
@@ -3484,6 +3581,12 @@
       var first = (f.customer || '').split(/\s+/)[0] || 'there';
       return 'Hi ' + first + ', this is Fourth Light Farm Construction following up on the estimate for ' + (f.job || 'your project') + ' (' + fm(f.total) + '). It is good through ' + f.vu + '. Do you have any questions, or would you like to pick a start date? Call or text (603) 265-1380.';
     }
+    var WHY = ['', 'Price', 'Timing', 'Went with someone else', 'Scope changed', 'Referral or trust', 'Not sure'];
+    function whyLine(list, label) {
+      var c = {}; list.forEach(function (f) { if (f.why) c[f.why] = (c[f.why] || 0) + 1; });
+      var parts = Object.keys(c).sort(function (a, b) { return c[b] - c[a]; }).map(function (k) { return esc(k) + ' ' + c[k]; });
+      return parts.length ? '<div class="muted">' + label + ': ' + parts.join(', ') + '</div>' : '';
+    }
     function renderFuList() {
       var box = $e('fulist'); updateFuBadge(); if (!box) return;
       var open = P.follow.filter(function (f) { return f.status === 'open'; }).sort(function (a, b) { return a.sent < b.sent ? -1 : 1; });
@@ -3492,9 +3595,9 @@
       box.innerHTML = (open.length ? '<div class="tblwrap"><table><tbody>' + open.map(function (f) {
         var days = Math.max(0, Math.floor((Date.now() - new Date(f.sent + 'T12:00:00').getTime()) / 864e5)), od = fuOverdue(f);
         return '<tr data-fid="' + f.id + '"><td>' + esc(f.name) + '<br><span class="muted">sent ' + esc(f.sent) + ', waiting ' + days + ' day' + (days === 1 ? '' : 's') + '</span> ' + (od ? '<span class="pill warn">follow up now</span>' : '') + '</td><td class="num">' + fm(f.total) + '</td>' +
-          '<td style="white-space:nowrap"><button class="alt small" data-fa="copy">Copy follow-up</button> <button class="go small" data-fa="won">Won</button> <button class="alt small" data-fa="lost">Lost</button> <button class="small danger" data-fa="rm" title="Remove">&times;</button></td></tr>';
+          '<td style="white-space:nowrap"><button class="alt small" data-fa="copy">Copy follow-up</button> <select data-fwhy title="Why? (optional, saved when you click Won or Lost)" style="width:auto;padding:3px">' + WHY.map(function (w) { return '<option value="' + esc(w) + '">' + (w ? esc(w) : 'Why? (optional)') + '</option>'; }).join('') + '</select> <button class="go small" data-fa="won">Won</button> <button class="alt small" data-fa="lost">Lost</button> <button class="small danger" data-fa="rm" title="Remove">&times;</button></td></tr>';
       }).join('') + '</tbody></table></div>' : '<div class="muted">No quotes waiting. After you send one, click <i>Mark quote as sent today</i> on the Quote tab.</div>') +
-        (dec ? '<div style="margin-top:10px"><b>Won ' + won.length + ' of ' + dec + ' decided quotes (' + Math.round(won.length / dec * 100) + '%)</b>, ' + fm(wonTotal) + ' won. <button class="alt small" data-fa="clear">Clear decided quotes</button></div>' : '');
+        (dec ? '<div style="margin-top:10px"><b>Won ' + won.length + ' of ' + dec + ' decided quotes (' + Math.round(won.length / dec * 100) + '%)</b>, ' + fm(wonTotal) + ' won. <button class="alt small" data-fa="clear">Clear decided quotes</button>' + whyLine(lost, 'Why you lost') + whyLine(won, 'Why you won') + '</div>' : '');
     }
     function renderQuote() { $e('quote').innerHTML = quoteHtml(); $e('handoff').textContent = handoffText(); $e('hdr').textContent = fm(calc().total); }
 
@@ -3631,6 +3734,13 @@
       });
       // prices
       $e('fp-card').addEventListener('input', frPriceEdit);
+      $e('stale').addEventListener('click', function (e) {
+        var b = e.target.closest('[data-keep]'); if (!b) return;
+        var k = b.closest('[data-sk]').dataset.sk;
+        if (k === 'frame') P.frame.chk = todayStr();
+        else { var p = k.split('|'), a = asmById(p[0]), c = a && a.comps[+p[1]]; if (c) c.chk = todayStr(); }
+        savePrices(); fillPrices();
+      });
       Object.keys(RATES).forEach(function (id) { $e(id).addEventListener('input', function (e) { P[RATES[id]] = num(e.target.value); savePrices(); }); });
       function unStarter(a) { if (!a.starter) return; a.starter = false; $$('#e-asm [data-sp]').forEach(function (sp) { var tr = sp.closest('tr'); if (tr && tr.dataset.id === a.id) sp.remove(); }); }
       $e('asm').addEventListener('input', function (e) {
@@ -3904,7 +4014,7 @@
         if (act === 'clear') { if (!confirm('Remove all won and lost quotes from the list? The win rate starts over.')) return; P.follow = P.follow.filter(function (x) { return x.status === 'open'; }); }
         else if (!f) return;
         else if (act === 'copy') { copyText(followText(f), b); return; }
-        else if (act === 'won' || act === 'lost') f.status = act;
+        else if (act === 'won' || act === 'lost') { f.status = act; var ws = tr.querySelector('[data-fwhy]'); if (ws && ws.value) f.why = ws.value; }
         else if (act === 'rm') { if (!confirm('Remove "' + f.name + '" from the list?')) return; P.follow = P.follow.filter(function (x) { return x !== f; }); }
         savePrices(); renderFuList();
       });
@@ -3993,7 +4103,9 @@
           ['Add what the job costs', 'Inside the job, under <i>Line items</i>, type a Category and a Description, pick the type, type the Amount and click <i>Add line item</i>. <i>Original</i> is in the first quote, <i>Change order</i> is something the customer asked to change, <i>Added</i> is anything else.'],
           ['Keep them posted', 'Under <i>Project updates</i> type a short title and details and click <i>Add update</i>. Use <i>Photos and files</i> to add pictures.'],
           ['Invoice them', 'Open the <i>Send invoice email</i> card. Pick the job. The total fills in from the line items. Click <i>Create Stripe invoice</i>, then <i>Send me a preview</i> to read it, then <i>Send to customer</i>. If you just sent an estimate to their portal, tap one of the amount buttons (the total, or a payment milestone like the deposit) to fill the total in one tap.'],
-          ['Answer change requests', 'On a line item in their portal the customer can tap <i>Request a change</i> (change, remove or add to it). It shows up under <i>Messages</i> marked <i>Change request</i>. Click <i>Start a change order</i> to open the Estimator with their request filled in, price it, send it to their portal job, then reply. A change order in their portal shows <i>Review and approve</i>: they type their name and tick the box, and it appears under the line item here as <i>Approved by</i> with the date. You also get an email.']
+          ['Answer change requests', 'On a line item in their portal the customer can tap <i>Request a change</i> (change, remove or add to it). It shows up under <i>Messages</i> marked <i>Change request</i>. Click <i>Start a change order</i> to open the Estimator with their request filled in, price it, send it to their portal job, then reply. A change order in their portal shows <i>Review and approve</i>: they type their name and tick the box, and it appears under the line item here as <i>Approved by</i> with the date. You also get an email.'],
+          ['Follow up on change orders', 'Any change order the customer has not approved shows in the <i>Change orders waiting on customers</i> card at the top, with how many days and whether they opened it. Use <i>Copy text message</i> or <i>Open email draft</i> to nudge them. On each job, the contract line shows the original price plus approved change orders.'],
+          ['Finish list', 'On each job, the <i>Finish list</i> holds small touch-up items. The customer can add items in their portal; you add your own here and check them off. When a job is completed and the list is done, the customer gets a Google review button.']
         ],
         ex: '<b>Jane Smith, kitchen backsplash.</b><br>Line items: Labor, Tile install, $1,200 (Original). Material, Tile and thinset, $600 (Original). She then asks for outlet covers: Change order, Outlet covers, $80.<br>The job card shows <b>Costs so far $1,880</b>, and the invoice total fills in as $1,880.',
         watch: ['Each row has a <i>Show</i> box. If it is checked, the customer can see that row in their portal right away.', 'Delete job and Delete customer cannot be undone, so the page asks you to confirm first.', 'Pick a customer first. Nothing here changes until you click a button like Add or Save.']
@@ -4086,7 +4198,7 @@
           ['Type the actuals', 'For each work type, type the hours it really took and the material you really spent. Dump, travel and other go on the last row. Leave a box blank if you did not track it.'],
           ['Read the profit', 'The summary shows the estimated profit and the actual profit, using your cost per hour from the Overhead tab.'],
           ['Record the job', 'Click <i>Record as a finished job</i>. It saves the numbers with the estimate and adds the job to the history.'],
-          ['Chase sent quotes', 'The top card lists quotes you marked as sent. After the follow-up days (7 to start) it says <i>follow up now</i>, and <i>Copy follow-up</i> gives you a message to paste into a text or email. Mark each one <i>Won</i> or <i>Lost</i> and it keeps your win rate. The number on the Results button is how many are overdue.'],
+          ['Chase sent quotes', 'The top card lists quotes you marked as sent. After the follow-up days (7 to start) it says <i>follow up now</i>, and <i>Copy follow-up</i> gives you a message to paste into a text or email. Mark each one <i>Won</i> or <i>Lost</i> and it keeps your win rate. Pick a reason first (price, timing, went with someone else, referral...) and it totals why you win and lose. The number on the Results button is how many are overdue.'],
           ['Let the Price list learn','Under <i>What finished jobs say</i>, each work type shows your Price list number next to the average of your real jobs. Click <i>Use</i> to put the real number into the Price list.']
         ],
         ex: '<b>Master bath floor, 60 SF.</b> Estimate said 12 hrs. It took 15, so hours are off by +25%. After a few jobs <i>Tile - floor</i> averages 0.25 hrs per SF against 0.20 in the Price list. Click <i>Use</i> and the next estimate carries 0.25.',
