@@ -1085,6 +1085,12 @@
       r.appendChild(rowField('LineItems', i, 'amount', 'number'));
       r.appendChild(showBox('LineItems', i)); r.appendChild(delBtn('LineItems', i, 'Line item'));
       body.appendChild(r);
+      if (/change/i.test(i.type || '')) {
+        var ap = i.approved;
+        var note = el('div', ap ? 'Approved by ' + ap.by + (ap.on ? ' on ' + shortDate(ap.on) : '') : (i.visible ? 'Waiting for the customer to approve this change order in their portal.' : 'Hidden from the customer, so they cannot approve it yet.'), 'muted');
+        note.style.cssText = 'margin:-2px 0 8px;font-size:13px;' + (ap ? 'color:#2e6b34;font-weight:bold' : '');
+        body.appendChild(note);
+      }
     });
     var al = el('div', null, 'line li');
     var lc = el('input'); lc.placeholder = 'Category'; var ld = el('input'); ld.placeholder = 'Description';
@@ -3987,7 +3993,7 @@
           ['Add what the job costs', 'Inside the job, under <i>Line items</i>, type a Category and a Description, pick the type, type the Amount and click <i>Add line item</i>. <i>Original</i> is in the first quote, <i>Change order</i> is something the customer asked to change, <i>Added</i> is anything else.'],
           ['Keep them posted', 'Under <i>Project updates</i> type a short title and details and click <i>Add update</i>. Use <i>Photos and files</i> to add pictures.'],
           ['Invoice them', 'Open the <i>Send invoice email</i> card. Pick the job. The total fills in from the line items. Click <i>Create Stripe invoice</i>, then <i>Send me a preview</i> to read it, then <i>Send to customer</i>. If you just sent an estimate to their portal, tap one of the amount buttons (the total, or a payment milestone like the deposit) to fill the total in one tap.'],
-          ['Answer change requests', 'On a line item in their portal the customer can tap <i>Request a change</i> (change, remove or add to it). It shows up under <i>Messages</i> marked <i>Change request</i>. Click <i>Start a change order</i> to open the Estimator with their request filled in, price it, send it to their portal job, then reply.']
+          ['Answer change requests', 'On a line item in their portal the customer can tap <i>Request a change</i> (change, remove or add to it). It shows up under <i>Messages</i> marked <i>Change request</i>. Click <i>Start a change order</i> to open the Estimator with their request filled in, price it, send it to their portal job, then reply. A change order in their portal shows <i>Review and approve</i>: they type their name and tick the box, and it appears under the line item here as <i>Approved by</i> with the date. You also get an email.']
         ],
         ex: '<b>Jane Smith, kitchen backsplash.</b><br>Line items: Labor, Tile install, $1,200 (Original). Material, Tile and thinset, $600 (Original). She then asks for outlet covers: Change order, Outlet covers, $80.<br>The job card shows <b>Costs so far $1,880</b>, and the invoice total fills in as $1,880.',
         watch: ['Each row has a <i>Show</i> box. If it is checked, the customer can see that row in their portal right away.', 'Delete job and Delete customer cannot be undone, so the page asks you to confirm first.', 'Pick a customer first. Nothing here changes until you click a button like Add or Save.']

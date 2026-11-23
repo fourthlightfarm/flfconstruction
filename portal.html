@@ -38,6 +38,8 @@
     .badge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:12px; font-weight:700; white-space:nowrap; }
     .Paid { background:#dcebd6; color:#2f5a2b; } .Pending { background:#f5e6b3; color:#6b4e00; } .Not-paid { background:#f7e2de; color:#a33a2b; }
     .flagbox { margin-top:8px; padding:10px; background:var(--cream); border-radius:8px; }
+    .agree { display:flex; gap:8px; align-items:center; margin:10px 0; font-size:15px; }
+    .agree input { width:auto; flex:none; }
     .reply { margin-top:6px; padding:8px 10px; background:#e3f0e1; border-radius:8px; font-size:14px; }
     h2.group { margin:22px 2px 0; font-size:17px; }
     details.job { background:#fff; border-radius:10px; box-shadow:0 1px 4px rgba(0,0,0,.12); margin-top:12px; }
@@ -199,6 +201,37 @@
     return wrap;
   }
 
+  // A change order waits here for the customer's approval. They type their name and tick the box; it is recorded with the time.
+  function approveBox(ref, amount) {
+    var wrap = el('div');
+    var btn = el('button', 'Review and approve', 'small');
+    btn.type = 'button';
+    var box = el('div', null, 'flagbox');
+    box.hidden = true;
+    box.appendChild(el('p', 'This change order adds ' + money(amount) + ' to your project. Approving it tells us to go ahead with this work at this price.', 'muted'));
+    var name = el('input');
+    name.type = 'text';
+    name.maxLength = 80;
+    name.placeholder = 'Type your full name';
+    name.autocomplete = 'name';
+    var lab = el('label', null, 'agree');
+    var cb = el('input');
+    cb.type = 'checkbox';
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(' I approve this change order for ' + money(amount)));
+    var send = el('button', 'Approve', 'full');
+    send.type = 'button';
+    box.appendChild(name); box.appendChild(lab); box.appendChild(send);
+    btn.addEventListener('click', function () { box.hidden = !box.hidden; });
+    send.addEventListener('click', function () {
+      if (name.value.trim().length < 2) { banner('Type your full name to approve.', 'err'); return; }
+      if (!cb.checked) { banner('Check the box to confirm your approval.', 'err'); return; }
+      run({ action: 'approve', ref: ref, by: name.value.trim(), agree: true });
+    });
+    wrap.appendChild(btn); wrap.appendChild(box);
+    return wrap;
+  }
+
   function listInvoices(box, list) {
     if (!list.length) box.appendChild(el('p', 'No invoices yet.', 'muted'));
     list.forEach(function (i) {
@@ -243,6 +276,8 @@
       top.appendChild(left);
       top.appendChild(el('b', money(x.amount)));
       row.appendChild(top);
+      if (x.approved) row.appendChild(el('div', 'Approved by ' + x.approved.by + (x.approved.on ? ' on ' + fmtDay(x.approved.on) : ''), 'reply'));
+      else if (x.needsApproval) row.appendChild(approveBox(x.ref, x.amount));
       row.appendChild(changeBox(x.ref, x.description));
       box.appendChild(row);
     });
